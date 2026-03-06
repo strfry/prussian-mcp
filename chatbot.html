@@ -61,6 +61,25 @@
   .dict-hits {
     margin-top: 5px; font-size: 11px;
     color: #bbb; font-family: sans-serif;
+    cursor: help; position: relative; user-select: none;
+  }
+  .dict-hits:hover { color: #999; }
+  .dict-hits .tooltip {
+    display: none; position: absolute; bottom: 100%; left: 0;
+    background: #2c1a06; color: #f5dfa0; padding: 8px 12px;
+    border-radius: 8px; font-size: 11.5px; line-height: 1.4;
+    box-shadow: 0 2px 12px rgba(0,0,0,.4); margin-bottom: 8px;
+    z-index: 10; max-width: 300px; white-space: normal;
+    pointer-events: none;
+  }
+  .dict-hits:hover .tooltip,
+  .dict-hits:active .tooltip { display: block; }
+  .dict-hits .tooltip::after {
+    content: ''; position: absolute; top: 100%; left: 20px;
+    border: 6px solid transparent; border-top-color: #2c1a06;
+  }
+  @media (max-width: 600px) {
+    .dict-hits .tooltip { max-width: 220px; font-size: 10.5px; }
   }
   .typing {
     display: flex; align-items: center; gap: 10px;
@@ -130,52 +149,140 @@ const DICT_URL  = "/prussian_dictionary.json";
 const PROXY_URL = "/api_proxy.php";
 const MAX_HITS  = 30;
 
-let dictEntries = [], dictIndexes = null, history = [], busy = false;
+let dictEntries = [], history = [], busy = false;
 
-// ── Index builder ────────────────────────────────────────────────────────
-function buildIndexes(entries) {
-  const byWord = {}, reverse = {};
-  const add = (text, i) => {
-    if (!text) return;
-    text.toLowerCase().split(/[\s,()[\]/]+/).filter(t => t.length > 2).forEach(t => {
-      (reverse[t] = reverse[t] || new Set()).add(i);
+// ── Dictionary Search (like search.sh) ──────────────────────────────────
+function normalize(text) {
+  if (!text) return '';
+  const replacements = {'ā':'a','ē':'e','ī':'i','ō':'o','ū':'u','ã':'a','ẽ':'e','ĩ':'i','õ':'o','ũ':'u'};
+  return text.toLowerCase().split('').map(c => replacements[c] || c).join('');
+}
+
+function extractAllForms(entry) {
+  const forms = new Set();
+  
+  // Declension forms
+  if (entry.forms?.declension) {
+    entry.forms.declension.forEach(decl => {
+      (decl.cases || []).forEach(c => {
+        if (c.singular) forms.add(c.singular.toLowerCase());
+        if (c.plural) forms.add(c.plural.toLowerCase());
+      });
     });
-  };
-  entries.forEach((e, i) => {
-    const w = e.word?.toLowerCase();
-    if (w) (byWord[w] = byWord[w] || []).push(i);
-    (e.translations?.miks || []).forEach(t => add(t, i));
-    (e.translations?.engl || []).forEach(t => add(t, i));
-    (e.translations?.leit || []).forEach(t => add(t, i));
+  }
+  
+  // Conjugation forms (all moods)
+  if (entry.forms?.indicative && Array.isArray(entry.forms.indicative)) {
+    // Indicative has tense groups
+    entry.forms.indicative.forEach(tenseGroup => {
+      if (Array.isArray(tenseGroup.forms)) {
+        tenseGroup.forms.forEach(f => {
+          if (f && f.form) forms.add(f.form.toLowerCase());
+        });
+      }
+    });
+  }
+  
+  // Other moods are direct arrays of {pronoun, form}
+  ['subjunctive', 'optative', 'imperative'].forEach(mood => {
+    if (entry.forms?.[mood] && Array.isArray(entry.forms[mood])) {
+      entry.forms[mood].forEach(item => {
+        if (item && item.form) forms.add(item.form.toLowerCase());
+      });
+    }
   });
-  return { byWord, reverse };
+  
+  // Participles and infinitives
+  ['participles', 'infinitives'].forEach(type => {
+    if (entry.forms?.[type]) {
+      entry.forms[type].forEach(item => {
+        if (item.form) forms.add(item.form.toLowerCase());
+      });
+    }
+  });
+  
+  return forms;
+}
+
+function matchesQuery(entry, queryWords) {
+  const qNorm = queryWords.map(q => normalize(q));
+  
+  // Match in Prussian lemma
+  const word = (entry.word || '').toLowerCase();
+  const wordNorm = normalize(word);
+  if (queryWords.some(q => word.includes(q) || wordNorm.includes(normalize(q)))) {
+    return true;
+  }
+  
+  // Match in all inflected forms
+  const forms = extractAllForms(entry);
+  for (const form of forms) {
+    if (queryWords.some(q => form.includes(q) || normalize(form).includes(normalize(q)))) {
+      return true;
+    }
+  }
+  
+  // Match in translations (German, English, Lithuanian)
+  for (const lang of ['miks', 'engl', 'leit']) {
+    const translations = entry.translations?.[lang] || [];
+    for (const trans of translations) {
+      const tLower = trans.toLowerCase();
+      const tNorm = normalize(tLower);
+      const words = tLower.split(/[\s,;]+/);
+      
+      if (queryWords.some(q => tLower.includes(q) || tNorm.includes(normalize(q)))) {
+        return true;
+      }
+      
+      // Word-level matching
+      for (const w of words) {
+        if (queryWords.some(q => w.includes(q) || q.includes(w))) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
 }
 
 function lookup(query) {
-  if (!dictIndexes) return [];
-  const hits = new Set();
-  query.toLowerCase().split(/[\s,?.!;:]+/).filter(t => t.length > 2).forEach(w => {
-    if (dictIndexes.reverse[w]) dictIndexes.reverse[w].forEach(i => hits.add(i));
-    Object.keys(dictIndexes.reverse).forEach(k => {
-      if (k.includes(w) || w.includes(k)) dictIndexes.reverse[k].forEach(i => hits.add(i));
-    });
-    (dictIndexes.byWord[w] || []).forEach(i => hits.add(i));
-  });
-  return [...hits].slice(0, MAX_HITS).map(i => {
-    const e = dictEntries[i];
+  if (!dictEntries || dictEntries.length === 0) return { results: [], words: [] };
+  
+  const queryWords = query.toLowerCase().split(/[\s,?.!;:]+/).filter(t => t.length > 2);
+  if (queryWords.length === 0) return { results: [], words: [] };
+  
+  const results = dictEntries.filter(e => matchesQuery(e, queryWords)).slice(0, MAX_HITS);
+  
+  const mapped = results.map(e => {
     const cas = e.forms?.declension?.[0]?.cases || [];
     const f = n => cas.find(c => c.case === n);
     return {
-      word: e.word, gender: e.gender || undefined, desc: e.desc || undefined,
-      de: e.translations?.miks, en: e.translations?.engl, lt: e.translations?.leit,
-      nom_sg: f("Nominative")?.singular, gen_sg: f("Genitive")?.singular,
-      dat_sg: f("Dative")?.singular,     acc_sg: f("Accusative")?.singular,
+      word: e.word, 
+      paradigm: e.paradigm,
+      gender: e.gender || undefined, 
+      desc: e.desc || undefined,
+      de: e.translations?.miks, 
+      en: e.translations?.engl, 
+      lt: e.translations?.leit,
+      nom_sg: f("Nominative")?.singular, 
+      gen_sg: f("Genitive")?.singular,
+      dat_sg: f("Dative")?.singular,     
+      acc_sg: f("Accusative")?.singular,
       nom_pl: f("Nominative")?.plural,
+      gen_pl: f("Genitive")?.plural,
+      dat_pl: f("Dative")?.plural,
+      acc_pl: f("Accusative")?.plural,
       present: e.forms?.indicative?.[0]?.forms,
       past:    e.forms?.indicative?.[1]?.forms,
       imperative: e.forms?.imperative,
     };
   }).filter(e => e.de || e.en);
+  
+  return {
+    results: mapped,
+    words: mapped.map(e => e.word)
+  };
 }
 
 // ── System prompt ────────────────────────────────────────────────────────
@@ -226,20 +333,37 @@ function clearEmpty() {
   if (e) e.remove();
 }
 
-function addMsg(role, prussian, german, hits) {
+function addMsg(role, prussian, german, words) {
   clearEmpty();
   const div = document.createElement("div");
   div.className = "msg " + (role === "user" ? "user" : "bot");
+  
   if (role === "bot") {
     div.innerHTML = `<div class="avatar">🏺</div>
       <div class="bubble">
         <div>${prussian.replace(/\n/g, "<br>")}</div>
         ${german ? `<div class="translation">🇩🇪 ${german}</div>` : ""}
-        ${hits > 0 ? `<div class="dict-hits">📖 ${hits} Wörterbucheinträge</div>` : ""}
       </div>`;
+    
+    // Add dictionary hits with tooltip
+    if (Array.isArray(words) && words.length > 0) {
+      const bubble = div.querySelector('.bubble');
+      const hitsDiv = document.createElement('div');
+      hitsDiv.className = 'dict-hits';
+      hitsDiv.textContent = `📖 ${words.length} Wörterbucheinträge`;
+      
+      // Create tooltip
+      const tooltip = document.createElement('span');
+      tooltip.className = 'tooltip';
+      tooltip.textContent = words.join(', ');
+      hitsDiv.appendChild(tooltip);
+      
+      bubble.appendChild(hitsDiv);
+    }
   } else {
     div.innerHTML = `<div class="bubble">${prussian}</div>`;
   }
+  
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
@@ -275,15 +399,15 @@ async function send() {
   addMsg("user", text);
   history.push({ role: "user", content: text });
 
-  const hits = lookup(text);
+  const lookup_result = lookup(text);
   showTyping();
 
   try {
-    const raw = await callAPI(makeSystem(hits));
+    const raw = await callAPI(makeSystem(lookup_result.results));
     hideTyping();
     const { prussian, german } = parseMsg(raw);
     history.push({ role: "assistant", content: raw });
-    addMsg("bot", prussian, german, hits.length);
+    addMsg("bot", prussian, german, lookup_result.words);
   } catch(e) {
     hideTyping(); showError(e.message);
     history.pop();
@@ -301,9 +425,8 @@ fetch(DICT_URL)
   .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
   .then(data => {
     dictEntries = Array.isArray(data) ? data : (data.words || data.entries || Object.values(data));
-    dictIndexes = buildIndexes(dictEntries);
     status.style.color = "#5a9";
-    status.textContent = "● Wörterbuch: " + dictEntries.length.toLocaleString() + " Einträge";
+    status.textContent = "● Wörterbuch: " + dictEntries.length.toLocaleString() + " Einträge (mit allen Formen)";
     setUI(true); input.focus();
   })
   .catch(e => {
