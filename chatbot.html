@@ -157,7 +157,7 @@
       <div id="dict-status">● Lade Wörterbuch…</div>
     </div>
     <div id="lang-selector">
-      <div id="lang-icon">🌐</div>
+      <div id="lang-icon">🇩🇪</div>
       <div id="lang-menu">
         <button data-lang="de">🇩🇪 Deutsch</button>
         <button data-lang="lt">🇱🇹 Lietuvių</button>
@@ -410,7 +410,14 @@ langButtons.forEach(btn => {
   });
 });
 
+function getLangIcon(lang) {
+  return lang === "lt" ? "🇱🇹" : "🇩🇪";
+}
+
 function updateUI() {
+  // Update language icon
+  langIcon.textContent = getLangIcon(currentLang);
+  
   // Update active language button
   langButtons.forEach(btn => {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
