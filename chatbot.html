@@ -195,6 +195,7 @@ const i18n = {
     "system.block": "## Wörterbuch-Einträge für diese Antwort",
     "system.intro": "Du bist ein Chatbot, der auf rekonstruiertem Neo-Preußisch (Altpreußisch) antwortet, gemäß der Rekonstruktion von Letas Palmaitis.",
     "system.rules": "Regeln:\n1. Nutze die Wörterbuch-Einträge unten für grammatisch korrekte Sätze. Verwende korrekte Kasus, Tempus und Numerus aus den bereitgestellten Formen.\n2. Fülle lexikalische Lücken mit baltischen Kognaten (litauisch/lettisch), angepasst an altpreußische Phonologie.\n3. Beende IMMER mit einer deutschen Übersetzung: [DE: …]\n4. Bei unsicheren Formen: kurze Anmerkung (rekonstruiert: …)\n5. 1–4 preußische Sätze. Warmer, leicht archaischer Ton.\n6. Keine langen linguistischen Erklärungen — einfach sprechen.",
+    "system.short_words": "## Häufige kurze Wörter (immer verfügbar):\nak=ach|as=ich|be=ohne|di=es|din=sie|dis=er|gi=doch|ik=wenn|iz=aus|jā=ja|jāu=schon|jūs=ihr|kas=wer|me=wir|na=auf|ni=nicht|nū=nun|pa=unter|pas=nach|pat=eben|pra=durch|sēn=mit|sēr=Herz|tēr=nur|tēt=so|tū=du|uts=Laus|aks=Auge|ass=Achse|iws=Eibe|ēr=bis|ēn=in|īr=sogar|šis=dieser",
   },
   lt: {
     "dict.loading": "● Kraunasi žodynas…",
@@ -210,6 +211,7 @@ const i18n = {
     "system.block": "## Šioms atsakymui naudoti žodyno įrašai",
     "system.intro": "Tu esi čatboto, kuris atsako senovės prūsų (Neo-Prussian) kalba pagal Letos Palmaičio rekonstrukciją.",
     "system.rules": "Taisyklės:\n1. Naudok žemiau pateiktus žodyno įrašus gramatiškai teisingiems sakingiams. Naudok teisingus kaip, laiką ir skaičių iš pateiktų formų.\n2. Užpildyk leksikines spragas baltų kognačiais (lietuvių/latvių), pritaikant senovės prūsų fonologijai.\n3. VISADA užbaigk lietuvių vertimu: [LT: …]\n4. Neaiškiems formoms: trumpa pastaba (rekonstruota: …)\n5. 1–4 prūsų sakiniai. Šiltas, šiek tiek archaiškas tono.\n6. Nėra ilgų lingvistinių paaiškini — tiesiog kalbėk.",
+    "system.short_words": "## Dažniausi trumpi žodžiai (visuomet galimi):\nak=ak|as=aš|be=be|di=tai|din=ją|dis=jis|gi=juk|ik=jei|iz=iš|jā=taip|jāu=jau|jūs=jūs|kas=kas|me=mes|na=ant|ni=ne|nū=na|pa=po|pas=pãskui|pat=pat|pra=per|sēn=su|sēr=širdis|tēr=tik|tēt=taip|tū=tu|uts=utelė|aks=akis|ass=ašis|iws=pelėda|ēr=iki|ēn=į|īr=ir|šis=šis",
   }
 };
 
@@ -360,7 +362,8 @@ function makeSystem(hits) {
   const block = hits.length
     ? "\n\n" + t("system.block") + "\n" + JSON.stringify(hits, null, 1)
     : "";
-  return t("system.intro") + "\n\n" + t("system.rules") + block;
+  const shortWords = "\n\n" + t("system.short_words");
+  return t("system.intro") + "\n\n" + t("system.rules") + shortWords + block;
 }
 
 // ── API call ─────────────────────────────────────────────────────────────
