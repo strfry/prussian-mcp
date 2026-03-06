@@ -20,8 +20,33 @@
     background: linear-gradient(135deg, #3b2408, #6b3d11);
     color: #f5dfa0; padding: 16px 20px 12px;
     box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    display: flex; justify-content: space-between; align-items: flex-start;
   }
   header h1 { font-size: 21px; letter-spacing: 1px; }
+  #lang-selector {
+    position: relative;
+  }
+  #lang-icon {
+    font-size: 20px; cursor: pointer; user-select: none;
+    transition: opacity .2s;
+  }
+  #lang-icon:hover { opacity: .7; }
+  #lang-menu {
+    display: none; position: absolute; top: 28px; right: 0;
+    background: #2c1a06; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4); z-index: 100;
+    min-width: 120px;
+  }
+  #lang-menu.open { display: block; }
+  #lang-menu button {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; color: #f5dfa0;
+    padding: 10px 16px; cursor: pointer;
+    font-family: sans-serif; font-size: 14px;
+    transition: background .2s;
+  }
+  #lang-menu button:hover { background: rgba(255,255,255,.1); }
+  #lang-menu button.active { background: #5a9; color: #2c1a06; font-weight: bold; }
   #dict-status {
     font-size: 11px; margin-top: 4px; font-family: sans-serif;
     color: #c9a84c;
@@ -127,19 +152,22 @@
 <body>
 <div id="app">
   <header>
-    <h1>🏛 Prūsiskan Balsenis</h1>
-    <div id="dict-status">● Lade Wörterbuch…</div>
-  </header>
-  <div id="chat">
-    <div class="empty">
-      <div class="icon">⚡</div>
-      Sprich mich an — auf Deutsch, Litauisch oder Englisch.<br>
-      <span style="font-size:13px">Ich antworte auf Altpreußisch, mit deutscher Übersetzung.</span>
+    <div>
+      <h1>🏛 Prūsiskan Balsenis</h1>
+      <div id="dict-status">● Lade Wörterbuch…</div>
     </div>
-  </div>
+    <div id="lang-selector">
+      <div id="lang-icon">🌐</div>
+      <div id="lang-menu">
+        <button data-lang="de">🇩🇪 Deutsch</button>
+        <button data-lang="lt">🇱🇹 Lietuvių</button>
+      </div>
+    </div>
+  </header>
+  <div id="chat"></div>
   <div id="error" style="display:none;margin:0 16px"></div>
   <div id="input-row">
-    <input id="input" type="text" placeholder="Schreib etwas auf Deutsch oder Englisch…" disabled>
+    <input id="input" type="text" disabled>
     <button id="send" disabled>➤</button>
   </div>
 </div>
@@ -149,7 +177,49 @@ const DICT_URL  = "/prussian_dictionary.json";
 const PROXY_URL = "/api_proxy.php";
 const MAX_HITS  = 30;
 
-let dictEntries = [], history = [], busy = false;
+let dictEntries = [], history = [], busy = false, currentLang = "de";
+
+// ── Internationalization (i18n) ──────────────────────────────────────────
+const i18n = {
+  de: {
+    "dict.loading": "● Lade Wörterbuch…",
+    "dict.loaded": "● Wörterbuch: {count} Einträge (mit allen Formen)",
+    "dict.error": "● Wörterbuch: Fehler – {error}",
+    "intro.line1": "Sprich mich an — auf Deutsch, Litauisch oder Englisch.",
+    "intro.line2": "Ich antworte auf Altpreußisch, mit deutscher Übersetzung.",
+    "input.placeholder": "Schreib etwas auf Deutsch oder Englisch…",
+    "typing": "Suche im Wörterbuch…",
+    "error.prefix": "⚠ ",
+    "hits.label": "📖 {count} Wörterbucheinträge",
+    "translation.prefix": "🇩🇪",
+    "system.block": "## Wörterbuch-Einträge für diese Antwort",
+    "system.intro": "Du bist ein Chatbot, der auf rekonstruiertem Neo-Preußisch (Altpreußisch) antwortet, gemäß der Rekonstruktion von Letas Palmaitis.",
+    "system.rules": "Regeln:\n1. Nutze die Wörterbuch-Einträge unten für grammatisch korrekte Sätze. Verwende korrekte Kasus, Tempus und Numerus aus den bereitgestellten Formen.\n2. Fülle lexikalische Lücken mit baltischen Kognaten (litauisch/lettisch), angepasst an altpreußische Phonologie.\n3. Beende IMMER mit einer deutschen Übersetzung: [DE: …]\n4. Bei unsicheren Formen: kurze Anmerkung (rekonstruiert: …)\n5. 1–4 preußische Sätze. Warmer, leicht archaischer Ton.\n6. Keine langen linguistischen Erklärungen — einfach sprechen.",
+  },
+  lt: {
+    "dict.loading": "● Kraunasi žodynas…",
+    "dict.loaded": "● Žodynas: {count} įrašų (su visomis formomis)",
+    "dict.error": "● Žodynas: Klaida – {error}",
+    "intro.line1": "Pakalbėk su manimi – vokiečių, lietuvių arba anglų kalba.",
+    "intro.line2": "Aš atsakau senovės prūsų kalba su vokiečių vertimo.",
+    "input.placeholder": "Parašyk ką nors vokiečių arba anglų kalba…",
+    "typing": "Ieško žodyne…",
+    "error.prefix": "⚠ ",
+    "hits.label": "📖 {count} žodyno įrašai",
+    "translation.prefix": "🇩🇪",
+    "system.block": "## Šioms atsakymui naudoti žodyno įrašai",
+    "system.intro": "Tu esi čatboto, kuris atsako senovės prūsų (Neo-Prussian) kalba pagal Letos Palmaičio rekonstrukciją.",
+    "system.rules": "Taisyklės:\n1. Naudok žemiau pateiktus žodyno įrašus gramatiškai teisingiems sakingiams. Naudok teisingus kaip, laiką ir skaičių iš pateiktų formų.\n2. Užpildyk leksikines spragas baltų kognačiais (lietuvių/latvių), pritaikant senovės prūsų fonologijai.\n3. VISADA užbaigk vokiečių vertimu: [DE: …]\n4. Neaiškiems formoms: trumpa pastaba (rekonstruota: …)\n5. 1–4 prūsų sakiniai. Šiltas, šiek tiek archaiškas tono.\n6. Nėra ilgų lingvistinių paaiškini — tiesiog kalbėk.",
+  }
+};
+
+function t(key, vars = {}) {
+  let text = i18n[currentLang]?.[key] || i18n["de"]?.[key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    text = text.replace(`{${k}}`, v);
+  }
+  return text;
+}
 
 // ── Dictionary Search (like search.sh) ──────────────────────────────────
 function normalize(text) {
@@ -288,17 +358,9 @@ function lookup(query) {
 // ── System prompt ────────────────────────────────────────────────────────
 function makeSystem(hits) {
   const block = hits.length
-    ? "\n\n## Wörterbuch-Einträge für diese Antwort\n" + JSON.stringify(hits, null, 1)
+    ? "\n\n" + t("system.block") + "\n" + JSON.stringify(hits, null, 1)
     : "";
-  return `Du bist ein Chatbot, der auf rekonstruiertem Neo-Preußisch (Altpreußisch) antwortet, gemäß der Rekonstruktion von Letas Palmaitis.
-
-Regeln:
-1. Nutze die Wörterbuch-Einträge unten für grammatisch korrekte Sätze. Verwende korrekte Kasus, Tempus und Numerus aus den bereitgestellten Formen.
-2. Fülle lexikalische Lücken mit baltischen Kognaten (litauisch/lettisch), angepasst an altpreußische Phonologie.
-3. Beende IMMER mit einer deutschen Übersetzung: [DE: …]
-4. Bei unsicheren Formen: kurze Anmerkung (rekonstruiert: …)
-5. 1–4 preußische Sätze. Warmer, leicht archaischer Ton.
-6. Keine langen linguistischen Erklärungen — einfach sprechen.${block}`;
+  return t("system.intro") + "\n\n" + t("system.rules") + block;
 }
 
 // ── API call ─────────────────────────────────────────────────────────────
@@ -327,10 +389,60 @@ const input = document.getElementById("input");
 const btn   = document.getElementById("send");
 const errEl = document.getElementById("error");
 const status = document.getElementById("dict-status");
+const langIcon = document.getElementById("lang-icon");
+const langMenu = document.getElementById("lang-menu");
+const langButtons = langMenu.querySelectorAll("button");
+
+// Language selector logic
+langIcon.addEventListener("click", () => {
+  langMenu.classList.toggle("open");
+});
+
+langButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const newLang = btn.dataset.lang;
+    if (newLang !== currentLang) {
+      currentLang = newLang;
+      localStorage.setItem("preusDictLang", newLang);
+      updateUI();
+    }
+    langMenu.classList.remove("open");
+  });
+});
+
+function updateUI() {
+  // Update active language button
+  langButtons.forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.lang === currentLang);
+  });
+  
+  // Update input placeholder
+  input.placeholder = t("input.placeholder");
+  
+  // Update intro if chat is empty
+  if (!chat.querySelector(".msg")) {
+    showIntro();
+  }
+  
+  // Update status if dictionary loaded
+  if (dictEntries.length > 0) {
+    status.textContent = t("dict.loaded", { count: dictEntries.length.toLocaleString() });
+  }
+}
 
 function clearEmpty() {
   const e = chat.querySelector(".empty");
   if (e) e.remove();
+}
+
+function showIntro() {
+  clearEmpty();
+  const intro = document.createElement("div");
+  intro.className = "empty";
+  intro.innerHTML = `<div class="icon">⚡</div>
+    ${t("intro.line1")}<br>
+    <span style="font-size:13px">${t("intro.line2")}</span>`;
+  chat.appendChild(intro);
 }
 
 function addMsg(role, prussian, german, words) {
@@ -342,7 +454,7 @@ function addMsg(role, prussian, german, words) {
     div.innerHTML = `<div class="avatar">🏺</div>
       <div class="bubble">
         <div>${prussian.replace(/\n/g, "<br>")}</div>
-        ${german ? `<div class="translation">🇩🇪 ${german}</div>` : ""}
+        ${german ? `<div class="translation">${t("translation.prefix")} ${german}</div>` : ""}
       </div>`;
     
     // Add dictionary hits with tooltip
@@ -350,7 +462,7 @@ function addMsg(role, prussian, german, words) {
       const bubble = div.querySelector('.bubble');
       const hitsDiv = document.createElement('div');
       hitsDiv.className = 'dict-hits';
-      hitsDiv.textContent = `📖 ${words.length} Wörterbucheinträge`;
+      hitsDiv.textContent = t("hits.label", { count: words.length });
       
       // Create tooltip
       const tooltip = document.createElement('span');
@@ -371,13 +483,13 @@ function addMsg(role, prussian, german, words) {
 function showTyping() {
   const d = document.createElement("div");
   d.className = "typing"; d.id = "typing";
-  d.innerHTML = `<span>🏺</span><span>Suche im Wörterbuch…</span>
+  d.innerHTML = `<span>🏺</span><span>${t("typing")}</span>
     <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
 }
 function hideTyping() { document.getElementById("typing")?.remove(); }
 
-function showError(msg) { errEl.textContent = "⚠ " + msg; errEl.style.display = "block"; }
+function showError(msg) { errEl.textContent = t("error.prefix") + msg; errEl.style.display = "block"; }
 function hideError()    { errEl.style.display = "none"; }
 
 function parseMsg(text) {
@@ -420,18 +532,23 @@ btn.addEventListener("click", send);
 input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) send(); });
 input.addEventListener("input", () => { btn.disabled = !input.value.trim() || busy; });
 
+// ── Load language from localStorage ──────────────────────────────────────
+currentLang = localStorage.getItem("preusDictLang") || "de";
+updateUI();
+
 // ── Load dictionary ──────────────────────────────────────────────────────
+status.textContent = t("dict.loading");
 fetch(DICT_URL)
   .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
   .then(data => {
     dictEntries = Array.isArray(data) ? data : (data.words || data.entries || Object.values(data));
     status.style.color = "#5a9";
-    status.textContent = "● Wörterbuch: " + dictEntries.length.toLocaleString() + " Einträge (mit allen Formen)";
+    status.textContent = t("dict.loaded", { count: dictEntries.length.toLocaleString() });
     setUI(true); input.focus();
   })
   .catch(e => {
     status.style.color = "#c55";
-    status.textContent = "● Wörterbuch: Fehler – " + e.message;
+    status.textContent = t("dict.error", { error: e.message });
     setUI(true); // noch ohne Wörterbuch nutzbar
   });
 </script>
