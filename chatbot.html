@@ -539,8 +539,30 @@ btn.addEventListener("click", send);
 input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) send(); });
 input.addEventListener("input", () => { btn.disabled = !input.value.trim() || busy; });
 
-// ── Load language from localStorage ──────────────────────────────────────
-currentLang = localStorage.getItem("preusDictLang") || "de";
+// ── Detect language from browser/localStorage ────────────────────────────
+function detectBrowserLanguage() {
+  // Priority: 1. localStorage, 2. browser preference, 3. default
+  const stored = localStorage.getItem("preusDictLang");
+  if (stored) return stored;
+  
+  // Check Accept-Language header
+  const acceptLang = navigator.language || navigator.userLanguage || "";
+  const langPref = acceptLang.toLowerCase();
+  
+  // Prefer Lithuanian if Accept-Language starts with 'lt'
+  if (langPref.startsWith("lt")) return "lt";
+  
+  // Prefer German if it starts with 'de', 'at' (Austria), 'ch' (Switzerland)
+  if (langPref.startsWith("de") || langPref.startsWith("at") || langPref.startsWith("ch")) return "de";
+  
+  // For all other languages (including Ukrainian 'uk', Russian 'ru', etc.): fallback to Lithuanian
+  if (langPref.length > 0 && !langPref.startsWith("en")) return "lt";
+  
+  // Default: German
+  return "de";
+}
+
+currentLang = detectBrowserLanguage();
 updateUI();
 
 // ── Load dictionary ──────────────────────────────────────────────────────
