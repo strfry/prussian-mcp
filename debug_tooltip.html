@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Debug: Tooltip Bug</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+  .section { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #333; }
+  h2 { margin-top: 0; color: #333; }
+  pre { background: #f0f0f0; padding: 10px; overflow-x: auto; border-radius: 4px; }
+  button { padding: 8px 16px; margin: 5px; cursor: pointer; background: #3b2408; color: white; border: none; border-radius: 4px; }
+  button:hover { background: #5a3a0d; }
+  .log { border: 1px solid #ccc; padding: 10px; margin: 10px 0; max-height: 300px; overflow-y: auto; font-size: 12px; }
+  .error { color: red; }
+  .success { color: green; }
+</style>
+</head>
+<body>
+
+<h1>🐛 Debug: Dictionary Tooltip Bug</h1>
+
+<div class="section">
+  <h2>Test Steps</h2>
+  <p>This page monitors what happens to tooltips across multiple messages.</p>
+  <button onclick="simulateFirstMessage()">1️⃣ Simulate 1st Message</button>
+  <button onclick="simulateSecondMessage()">2️⃣ Simulate 2nd Message</button>
+  <button onclick="simulateThirdMessage()">3️⃣ Simulate 3rd Message</button>
+  <button onclick="clearLog()">Clear Log</button>
+</div>
+
+<div class="section">
+  <h2>Debug Log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="section">
+  <h2>Chat Simulation</h2>
+  <div id="chat" style="border: 1px solid #ddd; padding: 10px; background: white; min-height: 200px; max-height: 400px; overflow-y: auto;"></div>
+</div>
+
+<script>
+const log = document.getElementById('log');
+const chat = document.getElementById('chat');
+
+function logMsg(msg, type = 'info') {
+  const timestamp = new Date().toLocaleTimeString();
+  const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+  log.innerHTML += `<div class="${className}">[${timestamp}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  log.innerHTML = '';
+}
+
+function createTooltipMsg(query, words) {
+  logMsg(`Creating message for query: "${query}"`);
+  logMsg(`  → words array: [${words.join(', ')}]`);
+  logMsg(`  → words.length: ${words.length}`);
+  
+  const div = document.createElement("div");
+  div.style.marginBottom = '10px';
+  div.style.padding = '10px';
+  div.style.background = '#f9f9f9';
+  div.style.borderLeft = '3px solid #3b2408';
+  
+  const bubble = document.createElement('div');
+  bubble.style.background = 'white';
+  bubble.style.padding = '10px';
+  bubble.style.borderRadius = '8px';
+  bubble.innerHTML = `<strong>🏺 Response:</strong> "Sample response for ${query}"`;
+  
+  // Check if words is array and has length
+  logMsg(`  → typeof words: ${typeof words}`);
+  logMsg(`  → Array.isArray(words): ${Array.isArray(words)}`);
+  logMsg(`  → words.length > 0: ${words && words.length > 0}`);
+  
+  if (Array.isArray(words) && words.length > 0) {
+    const hitsDiv = document.createElement('div');
+    hitsDiv.style.marginTop = '8px';
+    hitsDiv.style.fontSize = '12px';
+    hitsDiv.style.color = '#666';
+    hitsDiv.style.cursor = 'help';
+    hitsDiv.textContent = `📖 ${words.length} Wörterbucheinträge`;
+    
+    const tooltip = document.createElement('span');
+    tooltip.style.display = 'none';
+    tooltip.style.position = 'absolute';
+    tooltip.style.background = '#2c1a06';
+    tooltip.style.color = '#f5dfa0';
+    tooltip.style.padding = '8px 12px';
+    tooltip.style.borderRadius = '4px';
+    tooltip.style.fontSize = '11px';
+    tooltip.style.marginTop = '5px';
+    tooltip.style.maxWidth = '200px';
+    tooltip.textContent = words.join(', ');
+    
+    hitsDiv.addEventListener('mouseenter', () => {
+      tooltip.style.display = 'block';
+      logMsg(`  ✓ Tooltip hover triggered`, 'success');
+    });
+    hitsDiv.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
+    
+    hitsDiv.appendChild(tooltip);
+    bubble.appendChild(hitsDiv);
+    
+    logMsg(`  ✓ Tooltip div created and appended`, 'success');
+  } else {
+    logMsg(`  ✗ Words is not array or empty!`, 'error');
+  }
+  
+  div.appendChild(bubble);
+  chat.appendChild(div);
+  logMsg(`  ✓ Message appended to chat`, 'success');
+  logMsg('---');
+}
+
+function simulateFirstMessage() {
+  logMsg('=== FIRST MESSAGE ===');
+  createTooltipMsg('Sveikas', ['kaīls', 'svēts', 'sveiki']);
+}
+
+function simulateSecondMessage() {
+  logMsg('=== SECOND MESSAGE ===');
+  createTooltipMsg('Kāi laimē', ['kāi', 'laime', 'deva']);
+}
+
+function simulateThirdMessage() {
+  logMsg('=== THIRD MESSAGE ===');
+  createTooltipMsg('Ką tu dārai', ['ką', 'dāru', 'veikit']);
+}
+
+logMsg('Ready for testing...');
+</script>
+
+</body>
+</html>
