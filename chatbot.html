@@ -201,15 +201,15 @@ const i18n = {
     "dict.loaded": "● Žodynas: {count} įrašų (su visomis formomis)",
     "dict.error": "● Žodynas: Klaida – {error}",
     "intro.line1": "Pakalbėk su manimi – vokiečių, lietuvių arba anglų kalba.",
-    "intro.line2": "Aš atsakau senovės prūsų kalba su vokiečių vertimo.",
+    "intro.line2": "Aš atsakau senovės prūsų kalba su lietuvių vertimu.",
     "input.placeholder": "Parašyk ką nors vokiečių arba anglų kalba…",
     "typing": "Ieško žodyne…",
     "error.prefix": "⚠ ",
     "hits.label": "📖 {count} žodyno įrašai",
-    "translation.prefix": "🇩🇪",
+    "translation.prefix": "🇱🇹",
     "system.block": "## Šioms atsakymui naudoti žodyno įrašai",
     "system.intro": "Tu esi čatboto, kuris atsako senovės prūsų (Neo-Prussian) kalba pagal Letos Palmaičio rekonstrukciją.",
-    "system.rules": "Taisyklės:\n1. Naudok žemiau pateiktus žodyno įrašus gramatiškai teisingiems sakingiams. Naudok teisingus kaip, laiką ir skaičių iš pateiktų formų.\n2. Užpildyk leksikines spragas baltų kognačiais (lietuvių/latvių), pritaikant senovės prūsų fonologijai.\n3. VISADA užbaigk vokiečių vertimu: [DE: …]\n4. Neaiškiems formoms: trumpa pastaba (rekonstruota: …)\n5. 1–4 prūsų sakiniai. Šiltas, šiek tiek archaiškas tono.\n6. Nėra ilgų lingvistinių paaiškini — tiesiog kalbėk.",
+    "system.rules": "Taisyklės:\n1. Naudok žemiau pateiktus žodyno įrašus gramatiškai teisingiems sakingiams. Naudok teisingus kaip, laiką ir skaičių iš pateiktų formų.\n2. Užpildyk leksikines spragas baltų kognačiais (lietuvių/latvių), pritaikant senovės prūsų fonologijai.\n3. VISADA užbaigk lietuvių vertimu: [LT: …]\n4. Neaiškiems formoms: trumpa pastaba (rekonstruota: …)\n5. 1–4 prūsų sakiniai. Šiltas, šiek tiek archaiškas tono.\n6. Nėra ilgų lingvistinių paaiškini — tiesiog kalbėk.",
   }
 };
 
@@ -500,8 +500,15 @@ function showError(msg) { errEl.textContent = t("error.prefix") + msg; errEl.sty
 function hideError()    { errEl.style.display = "none"; }
 
 function parseMsg(text) {
-  const m = text.match(/\[DE:\s*([\s\S]*?)\]$/m);
-  return { prussian: text.replace(/\[DE:[\s\S]*?\]$/m, "").trim(), german: m?.[1]?.trim() };
+  // Match both [DE: ...] and [LT: ...]
+  const deMatch = text.match(/\[DE:\s*([\s\S]*?)\]$/m);
+  const ltMatch = text.match(/\[LT:\s*([\s\S]*?)\]$/m);
+  const translation = deMatch?.[1] || ltMatch?.[1];
+  
+  // Remove translation tag from text
+  const prussian = text.replace(/\[(DE|LT):\s*[\s\S]*?\]$/m, "").trim();
+  
+  return { prussian, german: translation?.trim() };
 }
 
 function setUI(enabled) {
