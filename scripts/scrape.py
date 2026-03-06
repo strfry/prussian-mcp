@@ -44,7 +44,7 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"phase": "enumerate", "done_prefixes": [], "completed_words": 0}
+    return {"phase": "enumerate", "done_prefixes": [], "done_3letter": [], "completed_words": 0}
 
 
 def save_state(state):
@@ -182,19 +182,49 @@ def search_prefix(prefix):
 
 
 def phase_enumerate():
-    """Phase 1: Build wordlist by searching all 2-letter prefix combinations."""
+    """Phase 1: Build wordlist by searching all prefix combinations (2-letter, then 3-letter)."""
     state = load_state()
     wordlist = load_wordlist()
     existing = {entry_key(e) for e in wordlist}
     done_prefixes = set(state.get("done_prefixes", []))
+    done_3letter = set(state.get("done_3letter", []))
 
-    # Generate all 2-letter combos
-    all_prefixes = [a + b for a in ALPHABET for b in ALPHABET]
-    remaining = [p for p in all_prefixes if p not in done_prefixes]
+    # Phase 1a: 2-letter prefixes
+    all_2letter = [a + b for a in ALPHABET for b in ALPHABET]
+    remaining_2letter = [p for p in all_2letter if p not in done_prefixes]
 
-    print(f"Phase 1: Enumerate ({len(done_prefixes)}/{len(all_prefixes)} prefixes done, {len(wordlist)} words)", file=sys.stderr)
+    if remaining_2letter:
+        print(f"Phase 1a: 2-letter prefixes ({len(done_prefixes)}/{len(all_2letter)} done, {len(wordlist)} words)", file=sys.stderr)
 
-    for i, prefix in enumerate(remaining):
+        for i, prefix in enumerate(remaining_2letter):
+            results = search_prefix(prefix)
+            new = 0
+            for r in results:
+                k = entry_key(r)
+                if k not in existing:
+                    existing.add(k)
+                    wordlist.append(r)
+                    new += 1
+
+            done_prefixes.add(prefix)
+
+            # Save every 27 prefixes (= one "row" of the alphabet)
+            if (i + 1) % 27 == 0 or (i + 1) == len(remaining_2letter):
+                state["done_prefixes"] = sorted(done_prefixes)
+                save_wordlist(wordlist)
+                save_state(state)
+                letter = prefix[0]
+                print(f"  '{letter}*': {len(wordlist)} words total", file=sys.stderr, flush=True)
+
+    # Phase 1b: 3-letter prefixes (for better coverage)
+    print(f"\nPhase 1b: 3-letter prefixes (0/{len(ALPHABET)**3} done, {len(wordlist)} words)", file=sys.stderr)
+    
+    all_3letter = [a + b + c for a in ALPHABET for b in ALPHABET for c in ALPHABET]
+    remaining_3letter = [p for p in all_3letter if p not in done_3letter]
+    
+    print(f"  Searching {len(remaining_3letter)} 3-letter prefixes for additional coverage...", file=sys.stderr)
+
+    for i, prefix in enumerate(remaining_3letter):
         results = search_prefix(prefix)
         new = 0
         for r in results:
@@ -204,17 +234,20 @@ def phase_enumerate():
                 wordlist.append(r)
                 new += 1
 
-        done_prefixes.add(prefix)
+        done_3letter.add(prefix)
 
-        # Save every 27 prefixes (= one "row" of the alphabet)
-        if (i + 1) % 27 == 0 or (i + 1) == len(remaining):
+        # Save every 100 prefixes
+        if (i + 1) % 100 == 0 or (i + 1) == len(remaining_3letter):
+            state["done_3letter"] = sorted(done_3letter)
             state["done_prefixes"] = sorted(done_prefixes)
             save_wordlist(wordlist)
             save_state(state)
-            letter = prefix[0]
-            print(f"  '{letter}*': {len(wordlist)} words total (+{new} last)", file=sys.stderr, flush=True)
+            progress = len(done_3letter)
+            total = len(all_3letter)
+            print(f"  [{progress}/{total}] {len(wordlist)} words total (+{new} last)", file=sys.stderr, flush=True)
 
     state["phase"] = "complete"
+    state["done_3letter"] = sorted(done_3letter)
     save_state(state)
     print(f"\nEnumeration done: {len(wordlist)} unique entries", file=sys.stderr)
 
