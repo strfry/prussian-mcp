@@ -1,0 +1,25 @@
+Prompt für das Styling
+
+Style die Datei chatbot.html so, dass sie dem Design von https://awizi.twanksta.org ähnelt — einer altpreußischen Online-Zeitung mit schlichtem, typografisch geprägtem Druckwerk-Charakter.
+
+Designprinzipien:
+
+    Weißer/hellgrauer Hintergrund, schwarzer Text, keine Gradienten
+    Alles in Serif (Georgia), kein modernes App-Feeling
+    Schwarzer flacher Header-Balken, keine Rundungen
+    Chat-Blasen als schlichte Rechtecke mit dünnem schwarzen Rahmen, kein box-shadow
+    Nutzer-Nachrichten: hellgrau (#eeeeee), schwarzer Text
+    Eingabefeld und Button: eckig, schwarzer Rand, schwarzer Button mit weißer Schrift
+    Übersetzung: kursiv, mit border-left: 3px solid #ccc
+
+Bilder (liegen in images/ relativ zur chatbot.html):
+
+    images/head.png — Emblem, klein, neben oder über dem Seitentitel im Header
+    images/header.png — breites Dekorbanner, volle Breite, direkt unter dem Seitentitel
+
+Typografie & Details:
+
+    Trennlinien als echte <hr>
+    Bot-Avatar: typografisches Zeichen statt Emoji, z.B. ※
+    Footer: zentriert, klein, durch <hr> getrennt
+
