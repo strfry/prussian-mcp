@@ -5,11 +5,10 @@
 
 // ── Configuration ────────────────────────────────────────────────────────
 const DICT_URL = "/data/prussian_dictionary.json";
-const PROXY_URL = "/api_proxy.php";
-const API_SEARCH_URL = "/api/search";  // Semantic search endpoint
+const LLM_URL = "/api/llm";            // LLM proxy endpoint
+const API_SEARCH_URL = "/api/search";  // Semantic search endpoint (E5)
 const API_FORMS_URL = "/api/forms";    // Forms lookup endpoint
 const MAX_HITS = 30;
-const USE_SEMANTIC_SEARCH = true;      // Feature flag
 
 let dictEntries = [];
 let history = [];
@@ -437,7 +436,7 @@ function makeSystem(hits) {
 }
 
 async function callAPI(system) {
-  const res = await fetch(PROXY_URL, {
+  const res = await fetch(LLM_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -466,20 +465,16 @@ async function send() {
   addMsg("user", text);
   history.push({ role: "user", content: text });
 
-  // Try semantic search first, fallback to lexical lookup
-  let lookup_result;
-  if (USE_SEMANTIC_SEARCH) {
-    lookup_result = await semanticSearch(text, MAX_HITS);
-    if (!lookup_result) {
-      console.warn('⚠️ Semantic search failed, falling back to lexical lookup');
-      lookup_result = lookup(text);
-    } else {
-      console.log('✨ Semantic search result:', lookup_result);
-    }
-  } else {
-    lookup_result = lookup(text);
-    console.log('🔍 Lexical lookup result:', lookup_result);
+  // Use E5 semantic search (no fallback)
+  const lookup_result = await semanticSearch(text, MAX_HITS);
+  if (!lookup_result) {
+    hideTyping();
+    showError('Semantic search failed');
+    busy = false;
+    setUI(true);
+    return;
   }
+  console.log('✨ Semantic search result:', lookup_result);
   console.log('  → words:', lookup_result.words);
   showTyping();
 

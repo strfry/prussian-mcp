@@ -6,6 +6,7 @@ from flask_cors import CORS
 import json
 import sys
 import os
+import requests
 
 # Add lib directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
@@ -101,6 +102,67 @@ def health():
         "embeddings_loaded": search.embeddings is not None,
         "dictionary_entries": len(dictionary)
     })
+
+
+@app.route('/api/llm', methods=['POST'])
+def llm_proxy():
+    """
+    LLM proxy endpoint - forwards requests to HuggingFace.
+
+    Converts Anthropic format -> OpenAI format -> HuggingFace -> Anthropic format
+
+    Request: {"system": "...", "messages": [...], "max_tokens": 1000}
+    Response: {"content": [{"type": "text", "text": "..."}]}
+    """
+    data = request.json
+    if not data:
+        return jsonify({"error": "No input"}), 400
+
+    # Convert Anthropic format to OpenAI format
+    messages = []
+    if data.get('system'):
+        messages.append({"role": "system", "content": data['system']})
+
+    for msg in data.get('messages', []):
+        messages.append({"role": msg['role'], "content": msg['content']})
+
+    # HuggingFace configuration
+    HF_TOKEN = os.environ.get('HF_TOKEN', 'HF_TOKEN_REDACTED')
+    MODEL = os.environ.get('HF_MODEL', 'Qwen/Qwen2.5-72B-Instruct')
+
+    # Call HuggingFace
+    try:
+        response = requests.post(
+            'https://router.huggingface.co/v1/chat/completions',
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {HF_TOKEN}'
+            },
+            json={
+                'model': MODEL,
+                'messages': messages,
+                'max_tokens': data.get('max_tokens', 1000),
+                'temperature': 0.7,
+                'stream': False
+            },
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return jsonify({"error": response.text}), response.status_code
+
+        # Convert OpenAI format back to Anthropic format
+        result = response.json()
+        if 'choices' in result and len(result['choices']) > 0:
+            text = result['choices'][0]['message']['content']
+            return jsonify({
+                "content": [{"type": "text", "text": text}]
+            })
+        else:
+            return jsonify({"error": "No response from LLM"}), 500
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # Serve UI files
