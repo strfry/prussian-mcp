@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Flask API for Prussian Dictionary RAG endpoints."""
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import json
 import sys
@@ -11,7 +11,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from prussian_search_skill import PrussianSearch
 
-app = Flask(__name__)
+# Get project root directory
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+app = Flask(__name__,
+            static_folder=os.path.join(project_root, 'ui'),
+            static_url_path='')
 CORS(app)  # Enable CORS for browser requests
 
 # Load embeddings once at startup
@@ -96,6 +101,26 @@ def health():
         "embeddings_loaded": search.embeddings is not None,
         "dictionary_entries": len(dictionary)
     })
+
+
+# Serve UI files
+@app.route('/')
+def index():
+    """Serve the main chatbot UI."""
+    return send_from_directory(app.static_folder, 'chatbot.html')
+
+
+@app.route('/data/<path:filename>')
+def serve_data(filename):
+    """Serve data files (dictionary, wordlist, etc.)."""
+    data_dir = os.path.join(project_root, 'data')
+    return send_from_directory(data_dir, filename)
+
+
+@app.route('/ui/<path:filename>')
+def serve_ui(filename):
+    """Serve UI assets."""
+    return send_from_directory(app.static_folder, filename)
 
 
 if __name__ == '__main__':
