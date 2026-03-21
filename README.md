@@ -17,7 +17,18 @@ AI-powered Old Prussian dictionary with semantic search capabilities using E5 mu
 
 ## Quick Start
 
-### Run the Backend
+### One-Command Start
+
+```bash
+./start.sh
+```
+
+This starts the Flask server which serves both the API and the web UI.
+
+- **Web UI**: http://localhost:5000/
+- **API**: http://localhost:5000/api/
+
+### Manual Start
 
 ```bash
 cd api
@@ -25,16 +36,7 @@ source ../v2/venv/bin/activate
 python app.py
 ```
 
-The API will start on `http://localhost:5000`
-
-### Open the UI
-
-Open `ui/chatbot.html` in your browser, or serve it with a local web server:
-
-```bash
-python -m http.server 8000
-# Then visit http://localhost:8000/ui/chatbot.html
-```
+Then open your browser to http://localhost:5000/
 
 ## API Endpoints
 
