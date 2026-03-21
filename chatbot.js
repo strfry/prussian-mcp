@@ -6,7 +6,10 @@
 // ── Configuration ────────────────────────────────────────────────────────
 const DICT_URL = "/prussian_dictionary.json";
 const PROXY_URL = "/api_proxy.php";
+const API_SEARCH_URL = "/api/search";  // Semantic search endpoint
+const API_FORMS_URL = "/api/forms";    // Forms lookup endpoint
 const MAX_HITS = 30;
+const USE_SEMANTIC_SEARCH = true;      // Feature flag
 
 let dictEntries = [];
 let history = [];
@@ -235,6 +238,78 @@ function lookup(query) {
   };
 }
 
+// ── Semantic Search API ──────────────────────────────────────────────────
+async function semanticSearch(query, topK = 30) {
+  try {
+    const response = await fetch(API_SEARCH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, top_k: topK })
+    });
+
+    if (!response.ok) {
+      console.warn(`Semantic search API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Format API response to match old lookup() format
+    const mapped = data.results.map(entry => {
+      const cas = entry.forms?.declension?.[0]?.cases || [];
+      const f = n => cas.find(c => c.case === n);
+      return {
+        word: entry.word,
+        paradigm: entry.paradigm,
+        gender: entry.gender || undefined,
+        desc: entry.desc || undefined,
+        de: entry.translations?.miks,
+        en: entry.translations?.engl,
+        lt: entry.translations?.leit,
+        nom_sg: f("Nominative")?.singular,
+        gen_sg: f("Genitive")?.singular,
+        dat_sg: f("Dative")?.singular,
+        acc_sg: f("Accusative")?.singular,
+        nom_pl: f("Nominative")?.plural,
+        gen_pl: f("Genitive")?.plural,
+        dat_pl: f("Dative")?.plural,
+        acc_pl: f("Accusative")?.plural,
+        present: entry.forms?.indicative?.[0]?.forms,
+        past: entry.forms?.indicative?.[1]?.forms,
+        imperative: entry.forms?.imperative,
+      };
+    }).filter(e => e.de || e.en);
+
+    return {
+      results: mapped,
+      words: mapped.map(r => r.word)
+    };
+  } catch (err) {
+    console.error("Semantic search failed:", err);
+    return null;
+  }
+}
+
+async function getForms(lemma) {
+  try {
+    const response = await fetch(API_FORMS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lemma })
+    });
+
+    if (!response.ok) {
+      console.warn(`Forms lookup API error: ${response.status}`);
+      return null;
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.error("Forms lookup failed:", err);
+    return null;
+  }
+}
+
 // ── UI Elements & Helpers ────────────────────────────────────────────────
 const chat = document.getElementById("chat");
 const input = document.getElementById("input");
@@ -391,8 +466,20 @@ async function send() {
   addMsg("user", text);
   history.push({ role: "user", content: text });
 
-  const lookup_result = lookup(text);
-  console.log('🔍 Lookup result:', lookup_result);
+  // Try semantic search first, fallback to lexical lookup
+  let lookup_result;
+  if (USE_SEMANTIC_SEARCH) {
+    lookup_result = await semanticSearch(text, MAX_HITS);
+    if (!lookup_result) {
+      console.warn('⚠️ Semantic search failed, falling back to lexical lookup');
+      lookup_result = lookup(text);
+    } else {
+      console.log('✨ Semantic search result:', lookup_result);
+    }
+  } else {
+    lookup_result = lookup(text);
+    console.log('🔍 Lexical lookup result:', lookup_result);
+  }
   console.log('  → words:', lookup_result.words);
   showTyping();
 
