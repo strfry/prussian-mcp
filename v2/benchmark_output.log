@@ -1,97 +1,0 @@
-`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.
-/home/strfry/projekte/prussian-dictionary/v2/venv/lib/python3.14/site-packages/transformers/modeling_attn_mask_utils.py:196: TracerWarning: torch.tensor results are registered as constants in the trace. You can safely ignore this warning if you use this function to create tensors out of constant variables that would be the same every time you call this function. In any other case, this might cause the trace to be incorrect.
-  inverted_mask = torch.tensor(1.0, dtype=dtype) - expanded_mask
-
-======================================================================
-STRATEGIE: WEIGHTED
-======================================================================
-
-📝 Text-Strategie: weighted_multilingual
-🔧 Lade OpenVINO-Modell: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-   Device: GPU.0
-   ✓ GPU-Modell geladen (dim=384)
-📖 Lade Wörterbuch: prussian_dictionary.json
-   ⚡ Small-Test-Modus: nur 1000 Einträge
-
-📖 Lade Wörterbuch: temp_weighted.json
-   ✓ 1000 Einträge geladen
-
-🔢 Generiere Embeddings (weighted_multilingual)...
-   1/3 Generiere Texte...
-   ✓ 1000 Texte generiert
-   2/3 Berechne Embeddings...
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [  3.1%] Batch 1/32        [  6.2%] Batch 2/32        [  9.4%] Batch 3/32        [ 12.5%] Batch 4/32        [ 15.6%] Batch 5/32        [ 18.8%] Batch 6/32        [ 21.9%] Batch 7/32        [ 25.0%] Batch 8/32        [ 28.1%] Batch 9/32        [ 31.2%] Batch 10/32        [ 34.4%] Batch 11/32        [ 37.5%] Batch 12/32        [ 40.6%] Batch 13/32        [ 43.8%] Batch 14/32        [ 46.9%] Batch 15/32        [ 50.0%] Batch 16/32        [ 53.1%] Batch 17/32        [ 56.2%] Batch 18/32        [ 59.4%] Batch 19/32        [ 62.5%] Batch 20/32        [ 65.6%] Batch 21/32        [ 68.8%] Batch 22/32        [ 71.9%] Batch 23/32        [ 75.0%] Batch 24/32        [ 78.1%] Batch 25/32        [ 81.2%] Batch 26/32        [ 84.4%] Batch 27/32        [ 87.5%] Batch 28/32        [ 90.6%] Batch 29/32        [ 93.8%] Batch 30/32        [ 96.9%] Batch 31/32        [100.0%] Batch 32/32
-   ✓ 1.0s (977 entries/s)
-   3/3 Fertig!
-   Shape: (1000, 384)
-
-⏱️  Embedding-Generierung: 1.1s
-   (949 entries/s)
-
-🔍 Evaluiere Such-Qualität...
-
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (37 entries/s)
-  'son' (29.1ms):
-      1. [0.764] dēlina
-      2. [0.760] dēlan
-      3. [0.759] dēlas
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (334 entries/s)
-  'daughter' (3.5ms):
-      1. [0.471] paauginnaiti
-      2. [0.421] dadāinis
-      3. [0.384] paaugīnts
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (437 entries/s)
-  'mother' (2.6ms):
-      1. [0.507] dēlina
-      2. [0.504] dadāinis
-      3. [0.492] dēlas
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (401 entries/s)
-  'father' (3.0ms):
-      1. [0.619] dēlina
-      2. [0.586] dēlas
-      3. [0.566] dēlan
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (338 entries/s)
-  'water' (3.6ms):
-      1. [0.603] auplūstwei
-      2. [0.552] delīkans
-      3. [0.547] appi
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (369 entries/s)
-  'light' (3.1ms):
-      1. [0.533] blīngewingis
-      2. [0.490] āuksli
-      3. [0.451] ebmīglintun
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (485 entries/s)
-  'house' (2.4ms):
-      1. [0.583] glupabuttan
-      2. [0.574] buttai
-      3. [0.435] buweīns
-   🚀 OpenVINO GPU (batch=32, device=GPU.0)
-        [100.0%] Batch 1/1
-   ✓ 0.0s (499 entries/s)
-  'tree' (2.4ms):
-      1. [0.669] meddjan
-      2. [0.637] wiss
-      3. [0.627] bēgawa
-
-📊 ZUSAMMENFASSUNG (weighted)
-   ────────────────────────────────────────────────────────────
-   Durchschnittliche Hit-Rate:      0.0%
-   Durchschnittlicher Score:      0.542
-
-   Ø Such-Zeit:                   6.2ms
-   Embedding-Zeit:                1.1s

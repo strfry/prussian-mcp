@@ -7,8 +7,8 @@ import json
 import sys
 import os
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add lib directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from prussian_search_skill import PrussianSearch
 
 app = Flask(__name__)
@@ -16,12 +16,12 @@ CORS(app)  # Enable CORS for browser requests
 
 # Load embeddings once at startup
 print("Loading embeddings...", file=sys.stderr)
-search = PrussianSearch(embeddings_path='../embeddings_e5_prefix')
+search = PrussianSearch(embeddings_path='../embeddings/embeddings_e5_prefix')
 print("Embeddings loaded successfully!", file=sys.stderr)
 
 # Load full dictionary for forms lookup
 print("Loading dictionary...", file=sys.stderr)
-with open('../prussian_dictionary.json', 'r', encoding='utf-8') as f:
+with open('../data/prussian_dictionary.json', 'r', encoding='utf-8') as f:
     dictionary = json.load(f)
     if isinstance(dictionary, dict):
         dictionary = list(dictionary.values())

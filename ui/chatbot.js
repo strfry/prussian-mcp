@@ -4,7 +4,7 @@
  */
 
 // ── Configuration ────────────────────────────────────────────────────────
-const DICT_URL = "/prussian_dictionary.json";
+const DICT_URL = "/data/prussian_dictionary.json";
 const PROXY_URL = "/api_proxy.php";
 const API_SEARCH_URL = "/api/search";  // Semantic search endpoint
 const API_FORMS_URL = "/api/forms";    // Forms lookup endpoint
