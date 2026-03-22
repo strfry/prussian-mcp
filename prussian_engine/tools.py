@@ -31,7 +31,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_prussian_word",
-            "description": "Look up a specific Prussian word (lemma or inflected form) to get its translation and grammatical information.",
+            "description": "Look up a Prussian word (lemma or inflected form) to verify its meaning. Use when you already have a Prussian word and need its translation. NOT for finding Prussian words from other languages - use search_dictionary for that!",
             "parameters": {
                 "type": "object",
                 "properties": {
