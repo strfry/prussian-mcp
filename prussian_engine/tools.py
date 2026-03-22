@@ -9,13 +9,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_dictionary",
-            "description": "Semantic search in the Prussian dictionary. Use descriptive, multi-word queries for best results. IMPORTANT: Use multiple related terms, not just single words!",
+            "description": "Semantic search in the Prussian dictionary. Use descriptive, multi-word queries for best results. IMPORTANT: Use multiple related terms, not just single words! Do NOT include 'prussian' or 'preußisch' in queries - that's implicit.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query with multiple descriptive terms in German or English. Examples: 'Gruß Begrüßung Hallo' (not just 'Hallo'), 'Haus Gebäude Wohnung' (not just 'Haus'), 'house building home' (not just 'house')"
+                        "description": "Search query with multiple descriptive terms in any language (German, Lithuanian, English, etc). Examples: 'Gruß Begrüßung Hallo' (not 'preußischer Gruß'), 'Haus Gebäude Wohnung' (not 'Haus'), 'sveikinimas linkėjimas labas' (Lithuanian). Never add 'prussian'/'preußisch' - it's redundant."
                     },
                     "top_k": {
                         "type": "integer",
