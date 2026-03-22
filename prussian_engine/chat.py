@@ -1,0 +1,197 @@
+"""Chat engine with LLM integration and tool calling."""
+
+import json
+import re
+from typing import Dict, Any, List, Optional
+from openai import OpenAI
+
+from .config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, SYSTEM_PROMPT_PATH
+from .tools import TOOLS, ToolExecutor
+
+
+class ChatEngine:
+    """Chat engine with tool calling support."""
+
+    def __init__(self, search_engine):
+        """
+        Initialize chat engine.
+
+        Args:
+            search_engine: SearchEngine instance for tool execution
+        """
+        self.search_engine = search_engine
+        self.tool_executor = ToolExecutor(search_engine)
+        self.client = OpenAI(
+            api_key=OPENAI_API_KEY or "dummy",
+            base_url=OPENAI_BASE_URL
+        )
+        self.model = OPENAI_MODEL
+        self.system_prompt = self._load_system_prompt()
+
+    def _load_system_prompt(self) -> str:
+        """Load system prompt from file."""
+        with open(SYSTEM_PROMPT_PATH, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+
+    def send_message(
+        self,
+        message: str,
+        language: str = "de",
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Process a user message and generate a response.
+
+        Args:
+            message: User message
+            language: Output language ('de' or 'lt')
+            history: Conversation history
+
+        Returns:
+            Response dict with prussian, german/lithuanian, usedWords, debugInfo, history
+        """
+        if history is None:
+            history = []
+
+        # Prepare system prompt with language parameter
+        lang_code = "LT" if language == "lt" else "DE"
+        system_prompt = self.system_prompt.replace("{lang_code}", lang_code)
+
+        # Build messages array
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": message})
+
+        # Track debug info
+        debug_info = {
+            "query": message,
+            "systemPrompt": system_prompt,
+            "toolCalls": [],
+            "results": [],
+            "usedWords": [],
+            "reasoning": []
+        }
+
+        # Tool calling loop
+        max_iterations = 10
+        iteration = 0
+        all_used_words = set()
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # LLM call
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto"
+            )
+
+            message_obj = response.choices[0].message
+            finish_reason = response.choices[0].finish_reason
+
+            # Check for reasoning (DeepSeek R1 style)
+            if hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content:
+                debug_info["reasoning"].append({
+                    "turn": iteration,
+                    "reasoning": message_obj.reasoning_content
+                })
+
+            # Add assistant message to history
+            messages.append({
+                "role": "assistant",
+                "content": message_obj.content or "",
+                **({"tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message_obj.tool_calls
+                ]} if message_obj.tool_calls else {})
+            })
+
+            # If no tool calls, we're done
+            if not message_obj.tool_calls:
+                break
+
+            # Execute tool calls
+            for tool_call in message_obj.tool_calls:
+                function_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
+
+                # Execute tool
+                result = self.tool_executor.execute(function_name, arguments)
+
+                # Track for debug
+                debug_info["toolCalls"].append({
+                    "name": function_name,
+                    "input": arguments,
+                    "result": result
+                })
+
+                # Collect results for debug
+                if isinstance(result, list):
+                    debug_info["results"].extend(result)
+                    # Track used words
+                    for item in result:
+                        if "word" in item:
+                            all_used_words.add(item["word"])
+
+                # Add tool response to messages
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result, ensure_ascii=False)
+                })
+
+        # Extract final response
+        final_message = messages[-1]["content"] if messages[-1]["role"] == "assistant" else ""
+
+        # Parse response for Prussian and translation
+        prussian, translation = self._parse_response(final_message, language)
+
+        # Update history (remove system prompt, keep user/assistant/tool messages)
+        updated_history = [m for m in messages[1:] if m["role"] in ["user", "assistant", "tool"]]
+
+        # Prepare debug info
+        debug_info["usedWords"] = sorted(list(all_used_words))
+
+        return {
+            "prussian": prussian,
+            "german" if language == "de" else "lithuanian": translation,
+            "usedWords": sorted(list(all_used_words)),
+            "debugInfo": debug_info,
+            "history": updated_history
+        }
+
+    def _parse_response(self, text: str, language: str) -> tuple[str, str]:
+        """
+        Parse LLM response to extract Prussian text and translation.
+
+        Args:
+            text: LLM response text
+            language: Expected language ('de' or 'lt')
+
+        Returns:
+            Tuple of (prussian_text, translation)
+        """
+        # Look for translation marker: [DE: ...] or [LT: ...]
+        lang_code = "LT" if language == "lt" else "DE"
+        pattern = rf'\[{lang_code}:\s*(.+?)\]'
+        match = re.search(pattern, text, re.DOTALL)
+
+        if match:
+            translation = match.group(1).strip()
+            # Everything before the translation is Prussian
+            prussian = text[:match.start()].strip()
+        else:
+            # Fallback: assume entire text is Prussian
+            prussian = text.strip()
+            translation = ""
+
+        return prussian, translation

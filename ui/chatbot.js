@@ -4,91 +4,32 @@
  */
 
 // ── Configuration ────────────────────────────────────────────────────────
-const DICT_URL = "/data/prussian_dictionary.json";
-const API_CHAT_URL = "/api/chat";  // Chat endpoint
-const MAX_HITS = 30;
+const API_CHAT_URL = "/prussian-api/chat";  // Chat endpoint
 
-let dictEntries = [];
 let busy = false;
 let currentLang = "de";
 let debugMode = false;
 let conversationHistory = [];  // Client-side conversation history
 
-// ── Normalization & Forms ────────────────────────────────────────────────
-function normalize(text) {
-  if (!text) return '';
-  const replacements = {'ā':'a','ē':'e','ī':'i','ō':'o','ū':'u','ã':'a','ẽ':'e','ĩ':'i','õ':'o','ũ':'u'};
-  return text.toLowerCase().split('').map(c => replacements[c] || c).join('');
-}
-
-function extractAllForms(entry) {
-  const forms = new Set();
-  
-  if (entry.forms?.declension) {
-    entry.forms.declension.forEach(decl => {
-      (decl.cases || []).forEach(c => {
-        if (c.singular) forms.add(c.singular.toLowerCase());
-        if (c.plural) forms.add(c.plural.toLowerCase());
-      });
-    });
-  }
-  
-  if (entry.forms?.indicative && Array.isArray(entry.forms.indicative)) {
-    entry.forms.indicative.forEach(tenseGroup => {
-      if (Array.isArray(tenseGroup.forms)) {
-        tenseGroup.forms.forEach(f => {
-          if (f && f.form) forms.add(f.form.toLowerCase());
-        });
-      }
-    });
-  }
-  
-  ['subjunctive', 'optative', 'imperative'].forEach(mood => {
-    if (entry.forms?.[mood] && Array.isArray(entry.forms[mood])) {
-      entry.forms[mood].forEach(item => {
-        if (item && item.form) forms.add(item.form.toLowerCase());
-      });
-    }
-  });
-  
-  ['participles', 'infinitives'].forEach(type => {
-    if (entry.forms?.[type]) {
-      entry.forms[type].forEach(item => {
-        if (item.form) forms.add(item.form.toLowerCase());
-      });
-    }
-  });
-  
-  return forms;
-}
-
 // ── Internationalization ─────────────────────────────────────────────────
 const i18n = {
   de: {
-    "dict.loading": "● Lade Wörterbuch…",
-    "dict.loaded": "● Wörterbuch: {count} Einträge (mit allen Formen)",
-    "dict.error": "● Wörterbuch: Fehler – {error}",
     "intro.line1": "Sprich mich an — auf Deutsch, Litauisch oder Englisch.",
     "intro.line2": "Ich antworte auf Altpreußisch, mit deutscher Übersetzung.",
     "input.placeholder": "Schreib etwas auf Deutsch oder Englisch…",
     "typing": "Suche im Wörterbuch…",
     "error.prefix": "⚠ ",
     "hits.label": "📖 {count} Wörterbucheinträge",
-    "translation.prefix": "🇩🇪",
-    "system.block": "## Wörterbuch-Einträge für diese Antwort"
+    "translation.prefix": "🇩🇪"
   },
   lt: {
-    "dict.loading": "● Kraunasi žodynas…",
-    "dict.loaded": "● Žodynas: {count} įrašų (su visomis formomis)",
-    "dict.error": "● Žodynas: Klaida – {error}",
     "intro.line1": "Pakalbėk su manimi – vokiečių, lietuvių arba anglų kalba.",
     "intro.line2": "Aš atsakau senovės prūsų kalba su lietuvių vertimu.",
     "input.placeholder": "Parašyk ką nors vokiečių arba anglų kalba…",
     "typing": "Ieško žodyne…",
     "error.prefix": "⚠ ",
     "hits.label": "📖 {count} žodyno įrašai",
-    "translation.prefix": "🇱🇹",
-    "system.block": "## Šioms atsakymui naudoti žodyno įrašai"
+    "translation.prefix": "🇱🇹"
   }
 };
 
@@ -123,7 +64,6 @@ const chat = document.getElementById("chat");
 const input = document.getElementById("input");
 const btn = document.getElementById("send");
 const errEl = document.getElementById("error");
-const status = document.getElementById("dict-status");
 const debugToggle = document.getElementById("debugToggle");
 const langIcon = document.getElementById("lang-icon");
 const langMenu = document.getElementById("lang-menu");
@@ -311,13 +251,9 @@ function updateUI() {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
   });
   input.placeholder = t("input.placeholder");
-  
+
   if (!chat.querySelector(".msg")) {
     showIntro();
-  }
-  
-  if (dictEntries.length > 0) {
-    status.textContent = t("dict.loaded", { count: dictEntries.length.toLocaleString() });
   }
 }
 
@@ -401,22 +337,5 @@ input.addEventListener("input", () => {
 // ── Initialization ───────────────────────────────────────────────────────
 currentLang = detectBrowserLanguage();
 updateUI();
-
-status.textContent = t("dict.loading");
-fetch(DICT_URL)
-  .then(r => {
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
-  })
-  .then(data => {
-    dictEntries = Array.isArray(data) ? data : (data.words || data.entries || Object.values(data));
-    status.style.color = "#5a9";
-    status.textContent = t("dict.loaded", { count: dictEntries.length.toLocaleString() });
-    setUI(true);
-    input.focus();
-  })
-  .catch(e => {
-    status.style.color = "#c55";
-    status.textContent = t("dict.error", { error: e.message });
-    setUI(true);
-  });
+setUI(true);
+input.focus();
