@@ -161,7 +161,12 @@ class ChatEngine:
                 # Collect results for debug
                 if isinstance(result, list):
                     debug_info["results"].extend(result)
-                    # Track used words
+
+                # Track used words only from get_word_forms (actual usage, not search results)
+                if function_name == "get_word_forms" and isinstance(result, dict):
+                    if "lemma" in result:
+                        all_used_words.add(result["lemma"])
+                elif function_name == "lookup_prussian_word" and isinstance(result, list):
                     for item in result:
                         if "word" in item:
                             all_used_words.add(item["word"])
