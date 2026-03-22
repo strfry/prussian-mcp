@@ -17,7 +17,7 @@ SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
 
 # LLM Configuration from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v1")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v3")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-oss-20b-int4-ov")
 
 # Embedding configuration

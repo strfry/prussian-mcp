@@ -9,13 +9,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_dictionary",
-            "description": "Semantic search in the Prussian dictionary. Use this to find Prussian words based on German or English input.",
+            "description": "Semantic search in the Prussian dictionary. Use descriptive, multi-word queries for best results. IMPORTANT: Use multiple related terms, not just single words!",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query in German or English (e.g., 'Haus', 'house')"
+                        "description": "Search query with multiple descriptive terms in German or English. Examples: 'Gruß Begrüßung Hallo' (not just 'Hallo'), 'Haus Gebäude Wohnung' (not just 'Haus'), 'house building home' (not just 'house')"
                     },
                     "top_k": {
                         "type": "integer",
