@@ -77,8 +77,11 @@ class ChatEngine:
         iteration = 0
         all_used_words = set()
 
+        print(f"\n🤖 LLM Tool-Calling Loop:")
+
         while iteration < max_iterations:
             iteration += 1
+            print(f"\n  ⟳ Turn {iteration}:")
 
             # LLM call
             response = self.client.chat.completions.create(
@@ -93,9 +96,12 @@ class ChatEngine:
 
             # Check for reasoning (DeepSeek R1 style)
             if hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content:
+                reasoning = message_obj.reasoning_content
+                preview = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
+                print(f"    🧠 Reasoning ({len(reasoning)} chars): {preview}")
                 debug_info["reasoning"].append({
                     "turn": iteration,
-                    "reasoning": message_obj.reasoning_content
+                    "reasoning": reasoning
                 })
 
             # Add assistant message to history
@@ -117,15 +123,33 @@ class ChatEngine:
 
             # If no tool calls, we're done
             if not message_obj.tool_calls:
+                print(f"    ✓ Final response generated")
                 break
 
             # Execute tool calls
+            print(f"    🔧 {len(message_obj.tool_calls)} tool call(s):")
             for tool_call in message_obj.tool_calls:
                 function_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
 
+                # Print tool call
+                args_str = json.dumps(arguments, ensure_ascii=False)
+                print(f"       • {function_name}({args_str})")
+
                 # Execute tool
                 result = self.tool_executor.execute(function_name, arguments)
+
+                # Print result summary
+                if isinstance(result, list):
+                    result_preview = f"{len(result)} results"
+                    if result:
+                        words = [r.get('word', '?') for r in result[:3]]
+                        result_preview += f": {', '.join(words)}"
+                        if len(result) > 3:
+                            result_preview += "..."
+                    print(f"         → {result_preview}")
+                else:
+                    print(f"         → {type(result).__name__}")
 
                 # Track for debug
                 debug_info["toolCalls"].append({
