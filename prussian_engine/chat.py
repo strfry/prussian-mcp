@@ -97,8 +97,8 @@ class ChatEngine:
             # Check for reasoning (DeepSeek R1 style)
             if hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content:
                 reasoning = message_obj.reasoning_content
-                preview = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
-                print(f"    🧠 Reasoning ({len(reasoning)} chars): {preview}")
+                print(f"    🧠 Reasoning ({len(reasoning)} chars):")
+                print(f"       {reasoning}")
                 debug_info["reasoning"].append({
                     "turn": iteration,
                     "reasoning": reasoning
