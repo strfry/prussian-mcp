@@ -95,7 +95,8 @@ class ChatEngine:
             finish_reason = response.choices[0].finish_reason
 
             # Check for reasoning (DeepSeek R1 style)
-            if hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content:
+            has_reasoning = hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content
+            if has_reasoning:
                 reasoning = message_obj.reasoning_content
                 print(f"    🧠 Reasoning ({len(reasoning)} chars):")
                 print(f"       {reasoning}")
@@ -104,11 +105,19 @@ class ChatEngine:
                     "reasoning": reasoning
                 })
 
-            # Add assistant message to history
-            messages.append({
+            # Add assistant message to history (including reasoning if present!)
+            assistant_msg = {
                 "role": "assistant",
                 "content": message_obj.content or "",
-                **({"tool_calls": [
+            }
+
+            # Include reasoning in message so model can build on previous thinking
+            if has_reasoning:
+                assistant_msg["reasoning_content"] = message_obj.reasoning_content
+
+            # Include tool calls if present
+            if message_obj.tool_calls:
+                assistant_msg["tool_calls"] = [
                     {
                         "id": tc.id,
                         "type": "function",
@@ -118,8 +127,9 @@ class ChatEngine:
                         }
                     }
                     for tc in message_obj.tool_calls
-                ]} if message_obj.tool_calls else {})
-            })
+                ]
+
+            messages.append(assistant_msg)
 
             # If no tool calls, we're done
             if not message_obj.tool_calls:
