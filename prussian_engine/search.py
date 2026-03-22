@@ -7,6 +7,12 @@ from typing import List, Dict, Any, Optional
 
 from .config import DICTIONARY_PATH, EMBEDDINGS_PATH, QUERY_PREFIX
 
+try:
+    from sentence_transformers import SentenceTransformer
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+
 
 class SearchEngine:
     """Semantic search engine using precomputed E5 embeddings."""
@@ -17,21 +23,27 @@ class SearchEngine:
         self.embeddings: Optional[np.ndarray] = None
         self.word_to_entry: Dict[str, Dict[str, Any]] = {}
         self.form_to_lemma: Dict[str, str] = {}
+        self.model = None
 
         self._load_dictionary()
         self._load_embeddings()
         self._build_indices()
+        self._load_model()
 
     def _load_dictionary(self):
-        """Load dictionary from JSON file."""
-        with open(DICTIONARY_PATH, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            self.entries = data if isinstance(data, list) else data.get('words', [])
+        """Load dictionary entries that match the embeddings."""
+        # Load from embeddings directory - these entries match the embedding order!
+        entries_file = Path(f"{EMBEDDINGS_PATH}.entries.json")
+        if not entries_file.exists():
+            raise FileNotFoundError(f"Entries file not found: {entries_file}")
+
+        with open(entries_file, 'r', encoding='utf-8') as f:
+            self.entries = json.load(f)
         print(f"Loaded {len(self.entries)} dictionary entries")
 
     def _load_embeddings(self):
         """Load precomputed embeddings from .npy file."""
-        emb_file = Path(f"{EMBEDDINGS_PATH}.npy")
+        emb_file = Path(f"{EMBEDDINGS_PATH}.embeddings.npy")
         if not emb_file.exists():
             raise FileNotFoundError(f"Embeddings not found: {emb_file}")
 
@@ -55,6 +67,16 @@ class SearchEngine:
                     self.form_to_lemma[form] = lemma
 
         print(f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms")
+
+    def _load_model(self):
+        """Load E5 model for query encoding."""
+        if not HAS_SENTENCE_TRANSFORMERS:
+            print("Warning: sentence-transformers not installed, search will not work")
+            return
+
+        print("Loading E5 model for queries...")
+        self.model = SentenceTransformer('intfloat/multilingual-e5-large')
+        print("Model loaded")
 
     def _extract_all_forms(self, entry: Dict[str, Any]) -> set:
         """Extract all inflected forms from an entry."""
@@ -91,6 +113,21 @@ class SearchEngine:
 
         return forms
 
+    def _cosine_similarity(self, vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+        """Compute cosine similarity between vector and matrix."""
+        # Normalize query vector
+        vec_norm = np.linalg.norm(vec)
+        if vec_norm > 1e-10:
+            vec = vec / vec_norm
+
+        # Normalize matrix rows
+        matrix_norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        matrix_norms = np.clip(matrix_norms, a_min=1e-10, a_max=None)
+        matrix = matrix / matrix_norms
+
+        # Dot product = cosine for normalized vectors
+        return np.dot(matrix, vec)
+
     def query(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
         Semantic search for dictionary entries.
@@ -102,19 +139,17 @@ class SearchEngine:
         Returns:
             List of entries with translations (lemmas only)
         """
-        if self.embeddings is None:
+        if self.embeddings is None or self.model is None:
             return []
 
-        # Add query prefix and create embedding placeholder
-        # Note: In production, this would use the actual E5 model to encode the query
-        # For now, we'll use a simple cosine similarity with existing embeddings
-        from sentence_transformers import SentenceTransformer
+        # Add E5 query prefix for asymmetric search
+        query_text = f"{QUERY_PREFIX}{query}"
 
-        model = SentenceTransformer('intfloat/multilingual-e5-large')
-        query_embedding = model.encode(QUERY_PREFIX + query, normalize_embeddings=True)
+        # Encode query
+        query_embedding = self.model.encode(query_text, convert_to_numpy=True)
 
         # Compute cosine similarities
-        similarities = np.dot(self.embeddings, query_embedding)
+        similarities = self._cosine_similarity(query_embedding, self.embeddings)
 
         # Get top-k indices
         top_indices = np.argsort(similarities)[::-1][:top_k * 2]  # Get more to filter
@@ -130,10 +165,12 @@ class SearchEngine:
 
             # Only return lemmas with translations (not inflected forms)
             if translations:
+                de_trans = translations.get('miks', [])
+                en_trans = translations.get('engl', [])
                 results.append({
                     'word': entry.get('word', ''),
-                    'de': translations.get('miks', [''])[0],
-                    'en': translations.get('engl', [''])[0],
+                    'de': de_trans[0] if de_trans else '',
+                    'en': en_trans[0] if en_trans else '',
                     'score': float(similarities[idx])
                 })
 
@@ -172,10 +209,12 @@ class SearchEngine:
     def _format_lookup_result(self, entry: Dict[str, Any], include_forms: bool = False) -> Dict[str, Any]:
         """Format an entry for lookup results."""
         translations = entry.get('translations', {})
+        de_trans = translations.get('miks', [])
+        en_trans = translations.get('engl', [])
         result = {
             'word': entry.get('word', ''),
-            'de': translations.get('miks', [''])[0],
-            'en': translations.get('engl', [''])[0],
+            'de': de_trans[0] if de_trans else '',
+            'en': en_trans[0] if en_trans else '',
         }
 
         if include_forms and entry.get('forms'):
