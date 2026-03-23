@@ -102,13 +102,22 @@ def fetch(url, params=None, post_data=None, retries=3):
                 except UnicodeDecodeError:
                     return raw.decode("iso-8859-1", errors="replace")
         except urllib.error.HTTPError as e:
-            if e.code == 503:
+            # Retry on any 5xx server error
+            if 500 <= e.code < 600:
                 if attempt < retries - 1:
                     wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
-                    print(f"\n  [HTTP 503] Warte {wait}s...", file=sys.stderr, flush=True)
+                    print(f"\n  [HTTP {e.code}] Warte {wait}s...", file=sys.stderr, flush=True)
                     time.sleep(wait)
                 else:
                     raise
+            else:
+                raise
+        except urllib.error.URLError as e:
+            # Retry on network errors (timeout, connection reset, etc.)
+            if attempt < retries - 1:
+                wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
+                print(f"\n  [Network Error: {e.reason}] Warte {wait}s...", file=sys.stderr, flush=True)
+                time.sleep(wait)
             else:
                 raise
         except Exception:
