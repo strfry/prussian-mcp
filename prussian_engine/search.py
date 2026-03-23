@@ -179,12 +179,13 @@ class SearchEngine:
 
         return results
 
-    def lookup(self, prussian_word: str) -> List[Dict[str, Any]]:
+    def lookup(self, prussian_word: str, fuzzy: bool = True) -> List[Dict[str, Any]]:
         """
         Reverse lookup: Find Prussian word (lemma or inflected form).
 
         Args:
             prussian_word: Prussian word to look up
+            fuzzy: If True, also try macron-normalized lookup if exact match fails
 
         Returns:
             List of matching entries with translations and forms
@@ -192,6 +193,7 @@ class SearchEngine:
         word_lower = prussian_word.lower().strip()
         results = []
 
+        # Try exact match first
         # Check if it's a lemma
         if word_lower in self.word_to_entry:
             entry = self.word_to_entry[word_lower]
@@ -204,7 +206,30 @@ class SearchEngine:
             if entry:
                 results.append(self._format_lookup_result(entry, include_forms=True))
 
+        # If no exact match and fuzzy is enabled, try macron-normalized lookup
+        if not results and fuzzy:
+            word_normalized = self._normalize_macrons(word_lower)
+
+            # Find all lemmata that match when normalized
+            for lemma, entry in self.word_to_entry.items():
+                if self._normalize_macrons(lemma) == word_normalized:
+                    results.append(self._format_lookup_result(entry, include_forms=True))
+
+            # Find all forms that match when normalized
+            if not results:
+                for form, lemma in self.form_to_lemma.items():
+                    if self._normalize_macrons(form) == word_normalized:
+                        entry = self.word_to_entry.get(lemma)
+                        if entry:
+                            result = self._format_lookup_result(entry, include_forms=True)
+                            if result not in results:
+                                results.append(result)
+
         return results
+
+    def _normalize_macrons(self, word: str) -> str:
+        """Remove macrons for fuzzy matching."""
+        return word.replace('ā', 'a').replace('ē', 'e').replace('ī', 'i').replace('ō', 'o').replace('ū', 'u')
 
     def _format_lookup_result(self, entry: Dict[str, Any], include_forms: bool = False) -> Dict[str, Any]:
         """Format an entry for lookup results."""

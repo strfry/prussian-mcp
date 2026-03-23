@@ -72,7 +72,7 @@ chat.py
 - LLM-Call via OpenAI (compat) Client
 - Tool-Calling Loop: LLM → Tool → Ergebnis → LLM
 - Parameter: message (str), language (str), history (list)
-- Return: {prussian, german, usedWords, debugInfo, history}
+- Return: {prussian, translation, usedWords, debugInfo, history}
 2. server.py (FastMCP)
 Webserver-Funktionen:
 - Statische Files aus ui/ serveen
@@ -83,7 +83,7 @@ Webserver-Funktionen:
     - history: list – Conversation History (vom Frontend gehalten)
   Response (JSON):
     - prussian: str – Antwort auf Altpreußisch
-    - german: str – Deutsche Übersetzung
+    - translation: str – Deutsche Übersetzung
     - usedWords: list – Verwendete Wörterbucheinträge
     - debugInfo: object – Debug-Informationen (optional)
     - history: list – Aktualisierte Conversation History
@@ -131,4 +131,4 @@ POST /prussian-api/chat (FastMCP, REST)
         → LLM Call (mit Tool-Ergebnissen)
         → Parse [DE: …] / [LT: …]
         → Update History
-    → Response: {prussian, german, usedWords, debugInfo, history}
+    → Response: {prussian, translation, usedWords, debugInfo, history}
