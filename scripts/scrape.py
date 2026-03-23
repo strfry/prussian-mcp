@@ -27,7 +27,7 @@ import urllib.request
 BASE = "https://wirdeins.twanksta.org"
 DIALECT = "semba"
 DELAY = 0.2
-RESULT_CAP = 38
+RESULT_CAP = 30  # If results >= this, subdivide with longer prefix
 
 LANGUAGES = ["engl", "miks", "leit", "latt", "pols", "mask"]
 
@@ -181,6 +181,39 @@ def search_prefix(prefix):
     return parse_search_results(text)
 
 
+def search_prefix_recursive(prefix, existing, max_depth=6):
+    """
+    Recursively search with prefix subdivision when results are capped.
+
+    Args:
+        prefix: Prefix to search
+        existing: Set of existing entry keys to avoid duplicates
+        max_depth: Maximum prefix length (prevent infinite recursion)
+
+    Returns:
+        List of new unique entries
+    """
+    results = search_prefix(prefix)
+    new_entries = []
+
+    # Add unique results
+    for r in results:
+        k = entry_key(r)
+        if k not in existing:
+            existing.add(k)
+            new_entries.append(r)
+
+    # If we hit the result cap and haven't reached max depth, subdivide
+    if len(results) >= RESULT_CAP and len(prefix) < max_depth:
+        print(f"    '{prefix}' has {len(results)} results (≥{RESULT_CAP}), subdividing...", file=sys.stderr, flush=True)
+        for letter in ALPHABET:
+            sub_prefix = prefix + letter
+            sub_entries = search_prefix_recursive(sub_prefix, existing, max_depth)
+            new_entries.extend(sub_entries)
+
+    return new_entries
+
+
 def phase_enumerate():
     """Phase 1: Build wordlist by searching all prefix combinations (2-letter, then 3-letter)."""
     state = load_state()
@@ -194,17 +227,13 @@ def phase_enumerate():
     remaining_2letter = [p for p in all_2letter if p not in done_prefixes]
 
     if remaining_2letter:
-        print(f"Phase 1a: 2-letter prefixes ({len(done_prefixes)}/{len(all_2letter)} done, {len(wordlist)} words)", file=sys.stderr)
+        print(f"Phase 1a: 2-letter prefixes with recursive subdivision ({len(done_prefixes)}/{len(all_2letter)} done, {len(wordlist)} words)", file=sys.stderr)
 
         for i, prefix in enumerate(remaining_2letter):
-            results = search_prefix(prefix)
-            new = 0
-            for r in results:
-                k = entry_key(r)
-                if k not in existing:
-                    existing.add(k)
-                    wordlist.append(r)
-                    new += 1
+            # Use recursive search that subdivides when needed
+            new_entries = search_prefix_recursive(prefix, existing, max_depth=6)
+            wordlist.extend(new_entries)
+            new = len(new_entries)
 
             done_prefixes.add(prefix)
 
@@ -216,35 +245,9 @@ def phase_enumerate():
                 letter = prefix[0]
                 print(f"  '{letter}*': {len(wordlist)} words total", file=sys.stderr, flush=True)
 
-    # Phase 1b: 3-letter prefixes (for better coverage)
-    print(f"\nPhase 1b: 3-letter prefixes (0/{len(ALPHABET)**3} done, {len(wordlist)} words)", file=sys.stderr)
-    
-    all_3letter = [a + b + c for a in ALPHABET for b in ALPHABET for c in ALPHABET]
-    remaining_3letter = [p for p in all_3letter if p not in done_3letter]
-    
-    print(f"  Searching {len(remaining_3letter)} 3-letter prefixes for additional coverage...", file=sys.stderr)
-
-    for i, prefix in enumerate(remaining_3letter):
-        results = search_prefix(prefix)
-        new = 0
-        for r in results:
-            k = entry_key(r)
-            if k not in existing:
-                existing.add(k)
-                wordlist.append(r)
-                new += 1
-
-        done_3letter.add(prefix)
-
-        # Save every 100 prefixes
-        if (i + 1) % 100 == 0 or (i + 1) == len(remaining_3letter):
-            state["done_3letter"] = sorted(done_3letter)
-            state["done_prefixes"] = sorted(done_prefixes)
-            save_wordlist(wordlist)
-            save_state(state)
-            progress = len(done_3letter)
-            total = len(all_3letter)
-            print(f"  [{progress}/{total}] {len(wordlist)} words total (+{new} last)", file=sys.stderr, flush=True)
+    # Phase 1b: Skip 3-letter phase (covered by recursive subdivision in Phase 1a)
+    print(f"\nPhase 1b: Skipped (recursive subdivision handles deep prefixes automatically)", file=sys.stderr)
+    done_3letter = set()  # Mark as done
 
     state["phase"] = "complete"
     state["done_3letter"] = sorted(done_3letter)

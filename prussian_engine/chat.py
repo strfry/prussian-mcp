@@ -48,7 +48,7 @@ class ChatEngine:
             history: Conversation history
 
         Returns:
-            Response dict with prussian, german/lithuanian, usedWords, debugInfo, history
+            Response dict with prussian, translation, usedWords, debugInfo, history
         """
         if history is None:
             history = []
@@ -83,6 +83,16 @@ class ChatEngine:
             iteration += 1
             print(f"\n  ⟳ Turn {iteration}:")
 
+            # Debug: Log API call
+            api_call = {
+                "model": self.model,
+                "messages": messages,
+                "tools": TOOLS,
+                "tool_choice": "auto"
+            }
+            print(f"\n    📤 API CALL:")
+            print(json.dumps(api_call, ensure_ascii=False, indent=2))
+
             # LLM call
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -91,15 +101,26 @@ class ChatEngine:
                 tool_choice="auto"
             )
 
+            # Debug: Log API response
+            print(f"\n    📥 API RESPONSE:")
+            print(json.dumps(response.model_dump(), ensure_ascii=False, indent=2))
+
             message_obj = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
+
+            # Debug: show what we got
+            print(f"    📊 finish_reason: {finish_reason}")
+            print(f"    📊 has content: {bool(message_obj.content)}")
+            print(f"    📊 has reasoning_content: {hasattr(message_obj, 'reasoning_content') and bool(message_obj.reasoning_content)}")
+            if message_obj.content:
+                print(f"    📊 content preview: {message_obj.content[:200]}...")
 
             # Check for reasoning (DeepSeek R1 style)
             has_reasoning = hasattr(message_obj, 'reasoning_content') and message_obj.reasoning_content
             if has_reasoning:
                 reasoning = message_obj.reasoning_content
                 print(f"    🧠 Reasoning ({len(reasoning)} chars):")
-                print(f"       {reasoning}")
+                print(f"       {reasoning[:200]}...")
                 debug_info["reasoning"].append({
                     "turn": iteration,
                     "reasoning": reasoning
@@ -197,12 +218,14 @@ class ChatEngine:
         # Update history (remove system prompt, keep user/assistant/tool messages)
         updated_history = [m for m in messages[1:] if m["role"] in ["user", "assistant", "tool"]]
 
-        # Prepare debug info
+        # Prepare debug info (exclude verbose reasoning from API response)
         debug_info["usedWords"] = sorted(list(all_used_words))
+        # Remove verbose reasoning array from debug info
+        debug_info.pop("reasoning", None)
 
         return {
             "prussian": prussian,
-            "german" if language == "de" else "lithuanian": translation,
+            "translation": translation,
             "usedWords": sorted(list(all_used_words)),
             "debugInfo": debug_info,
             "history": updated_history

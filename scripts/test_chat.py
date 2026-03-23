@@ -38,9 +38,8 @@ def main():
 
         # Display response
         print(f"\nPrussian: {result['prussian']}")
-        translation_key = "german" if language == "de" else "lithuanian"
-        if translation_key in result:
-            print(f"Translation: {result[translation_key]}")
+        if "translation" in result:
+            print(f"Translation: {result['translation']}")
 
         # Display used words
         if result.get("usedWords"):

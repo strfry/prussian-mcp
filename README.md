@@ -78,7 +78,7 @@ Response:
 ```json
 {
   "prussian": "Kails tū assei!",
-  "german": "Gegrüßt seist du!",
+  "translation": "Gegrüßt seist du!",
   "usedWords": ["kails", "tū", "assei"],
   "debugInfo": {...},
   "history": [...]

@@ -84,7 +84,7 @@ function showIntro() {
   chat.appendChild(intro);
 }
 
-function addMsg(role, prussian, german, words, debugInfo) {
+function addMsg(role, prussian, translation, words, debugInfo) {
   console.log(`addMsg called: role=${role}, words=${JSON.stringify(words)}`);
   clearEmpty();
   const div = document.createElement("div");
@@ -94,7 +94,7 @@ function addMsg(role, prussian, german, words, debugInfo) {
     div.innerHTML = `<div class="avatar">🏺</div>
       <div class="bubble">
         <div>${prussian.replace(/\n/g, "<br>")}</div>
-        ${german ? `<div class="translation">${t("translation.prefix")} ${german}</div>` : ""}
+        ${translation ? `<div class="translation">${t("translation.prefix")} ${translation}</div>` : ""}
       </div>`;
 
     console.log(`  → Checking: Array.isArray(words)=${Array.isArray(words)}, words.length=${words?.length}`);
@@ -292,7 +292,7 @@ async function send() {
     conversationHistory = result.history || [];
 
     hideTyping();
-    addMsg("bot", result.prussian, result.german, result.usedWords, result.debugInfo);
+    addMsg("bot", result.prussian, result.translation, result.usedWords, result.debugInfo);
   } catch (e) {
     hideTyping();
     showError(e.message);
