@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "prussian-dictionary": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "cwd": "/home/strfry/projekte/prussian-mcp"
+    }
+  }
+}

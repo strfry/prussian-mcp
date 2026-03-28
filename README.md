@@ -5,14 +5,17 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 ## Project Structure
 
 ```
-├── prussian_engine/    Python package (search, chat, tools)
-├── server.py           FastMCP server (MCP tools + REST API)
-├── data/               Dictionary data (~10,000 entries)
-├── embeddings/         Pre-computed E5 embeddings
-├── prompts/            System prompts for LLM
-├── ui/                 Web interface (HTML/JS)
-├── scripts/            CLI tools and utilities
-└── venv/               Virtual environment
+├── prussian_engine/       Python package (search, chat, tools)
+├── mcp_server.py          MCP tools via stdio (lightweight, for Claude Code/Desktop)
+├── web_server.py          Web server (REST API + static files + LLM)
+├── data/                  Dictionary data (~10,000 entries)
+├── embeddings/            Pre-computed E5 embeddings
+├── prompts/               System prompts for LLM
+├── ui/                    Web interface (HTML/JS)
+├── scripts/               CLI tools and utilities
+├── .mcp.json              MCP client configuration
+├── archive/               Archived files (old server.py)
+└── venv/                  Virtual environment
 ```
 
 ## Quick Start
@@ -37,15 +40,38 @@ export OPENAI_API_KEY="dummy"  # or your API key
 
 For local LLM servers, you can use any OpenAI-compatible endpoint.
 
-### 3. Start Server
+### 3. Start Server(s)
 
+Choose one or both depending on your use case:
+
+**Option A: MCP Server (for Claude Code/Desktop)**
 ```bash
-python server.py
+source venv/bin/activate
+python mcp_server.py
 ```
+- Runs on stdio (pure MCP protocol)
+- Lightweight, no LLM endpoint needed
+- Exposes 3 MCP tools for Claude clients
+- Configured in `.mcp.json`
 
+**Option B: Web Server (for browser UI + REST API)**
+```bash
+source venv/bin/activate
+python web_server.py
+```
+- Runs on http://localhost:8000
+- Requires LLM endpoint configuration (see step 2)
 - **Web UI**: http://localhost:8000/chatbot.html
 - **Chat API**: POST http://localhost:8000/prussian-api/chat
-- **MCP Tools**: Available for MCP clients (e.g., Claude Desktop)
+
+**Option C: Both (different terminals)**
+```bash
+# Terminal 1: MCP Server (for Claude)
+python mcp_server.py
+
+# Terminal 2: Web Server (for browser)
+python web_server.py
+```
 
 ## CLI Testing
 
@@ -97,9 +123,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
 - **prussian_engine**: Modular Python package with search, chat, and tools
-- **FastMCP**: Web server with MCP support and REST endpoints
+- **mcp_server.py**: Lightweight MCP server (stdio transport) for Claude clients
+- **web_server.py**: HTTP server with REST API and static file serving
 - **E5 Embeddings**: Semantic search using multilingual-e5-large (1024-dim)
 - **Tool Calling**: LLM uses tools to search dictionary and build responses
+
+**Two Runtime Modes:**
+1. **MCP Mode** (mcp_server.py): Pure MCP protocol via stdio, no HTTP overhead
+2. **Web Mode** (web_server.py): Full-featured with REST API, static files, and LLM integration
 
 ## Documentation
 
