@@ -42,36 +42,69 @@ For local LLM servers, you can use any OpenAI-compatible endpoint.
 
 ### 3. Start Server(s)
 
-Choose one or both depending on your use case:
+Choose based on your use case:
 
-**Option A: MCP Server (for Claude Code/Desktop)**
+**Option A: MCP Server - Local CLI (Claude Code/Desktop)**
 ```bash
 source venv/bin/activate
 python mcp_server.py
 ```
-- Runs on stdio (pure MCP protocol)
-- Lightweight, no LLM endpoint needed
-- Exposes 3 MCP tools for Claude clients
-- Configured in `.mcp.json`
+- **Transport**: stdio (pure MCP protocol)
+- **No LLM needed** - just dictionary tools
+- 4 MCP tools available:
+  - `search_dictionary` - Semantic search
+  - `lookup_prussian_word` - Word lookup
+  - `get_word_forms` - Declensions/conjugations
+  - `chat_prussian` - Chat via MCP Sampling (when supported by client)
+- **Configure**: `.mcp.json` (already set up)
+- **Best for**: Local development with Claude Code/Desktop
 
-**Option B: Web Server (for browser UI + REST API)**
+**Option B: MCP Server - Web Mode (Claude Web)**
+```bash
+source venv/bin/activate
+python mcp_server.py --web
+```
+- **Transport**: SSE (Server-Sent Events over HTTP)
+- **URL**: http://localhost:8000/sse
+- **No LLM needed** - just dictionary tools
+- **Configure in Claude Web**:
+  ```json
+  {
+    "type": "sse",
+    "url": "http://localhost:8000/sse"
+  }
+  ```
+- **Best for**: Testing with Claude Web
+
+**Option C: Web Server (for browser UI + REST API)**
 ```bash
 source venv/bin/activate
 python web_server.py
 ```
-- Runs on http://localhost:8000
-- Requires LLM endpoint configuration (see step 2)
+- **URL**: http://localhost:8000
+- **Requires LLM endpoint** configuration (see step 2)
 - **Web UI**: http://localhost:8000/chatbot.html
 - **Chat API**: POST http://localhost:8000/prussian-api/chat
+- **Best for**: Web UI and REST API integration
 
-**Option C: Both (different terminals)**
+**Option D: Both Servers (different terminals)**
 ```bash
-# Terminal 1: MCP Server (for Claude)
+# Terminal 1: MCP Server (stdio for local Claude Code/Desktop)
 python mcp_server.py
 
-# Terminal 2: Web Server (for browser)
+# Terminal 2: Web Server (HTTP for browser - REST API + static files)
 python web_server.py
 ```
+
+### Advanced: Using Sampling with Claude Web
+
+The MCP server includes a `chat_prussian` tool that uses MCP Sampling to request Claude to generate conversational responses. This requires:
+
+1. Claude Web or client that supports MCP Sampling
+2. MCP Server running in web mode (`--web`)
+3. Configuration for Claude Web
+
+**Status**: Currently testing with Claude Web to verify Sampling support.
 
 ## CLI Testing
 
