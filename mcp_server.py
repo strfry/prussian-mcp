@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
+import mcp.types as types
 
 import prussian_engine
 
@@ -78,6 +79,102 @@ def get_word_forms(lemma: str) -> dict[str, Any]:
         "gender": result.get("gender", ""),
         "forms": result.get("forms", {})
     }
+
+
+@mcp.tool()
+async def chat_prussian(
+    ctx: Context,
+    user_message: str,
+    language: str = "de"
+) -> dict[str, Any]:
+    """
+    Chat about Old Prussian using Claude with access to dictionary tools.
+
+    The MCP server uses sampling to request Claude to generate responses.
+    Claude can autonomously use the three dictionary tools during generation.
+
+    Args:
+        user_message: User's question or message in German or English
+        language: Response language ('de' for German, 'en' for English)
+
+    Returns:
+        Dictionary with:
+        - response: Claude's conversational response
+        - model: Model used for generation
+        - stop_reason: Why generation stopped (e.g., "end_turn")
+    """
+    session = ctx.session
+
+    # Check if client supports MCP Sampling
+    try:
+        sampling_cap = types.SamplingCapability()
+        if not session.check_client_capability(
+            types.ClientCapabilities(sampling=sampling_cap)
+        ):
+            return {"error": "Client does not support MCP Sampling"}
+    except Exception:
+        # If capability check fails, try sampling anyway
+        pass
+
+    # Build system prompt for Claude
+    language_name = "German" if language == "de" else "English"
+    system_prompt = f"""You are an expert on Old Prussian language and culture.
+You have access to a comprehensive Old Prussian dictionary with the following tools:
+- search_dictionary: Find words by meaning (German/English to Prussian)
+- lookup_prussian_word: Look up specific Prussian words or inflected forms
+- get_word_forms: Show declensions, conjugations, and word paradigms
+
+Guidelines:
+1. Use the dictionary tools to provide accurate information
+2. Explain word meanings, etymology, and usage patterns
+3. Show examples when helpful
+4. Always respond in {language_name}
+5. Be helpful, accurate, and educational
+
+If you don't have information, say so clearly."""
+
+    # Create user message
+    messages = [
+        types.SamplingMessage(
+            role="user",
+            content=types.TextContent(type="text", text=user_message)
+        )
+    ]
+
+    try:
+        # Request Claude to generate response via sampling
+        # include_context="thisServer" tells Claude to use our 3 tools
+        result = await session.create_message(
+            messages=messages,
+            max_tokens=2000,
+            system_prompt=system_prompt,
+            temperature=0.7,
+            include_context="thisServer"
+        )
+
+        # Extract response text
+        response_text = ""
+        if hasattr(result, "content"):
+            if isinstance(result.content, types.TextContent):
+                response_text = result.content.text
+            elif isinstance(result.content, str):
+                response_text = result.content
+            else:
+                response_text = str(result.content)
+        else:
+            response_text = str(result)
+
+        return {
+            "response": response_text,
+            "model": result.model if hasattr(result, "model") else "unknown",
+            "stop_reason": result.stopReason if hasattr(result, "stopReason") else None
+        }
+
+    except Exception as e:
+        return {
+            "error": f"Sampling request failed: {str(e)}",
+            "details": type(e).__name__
+        }
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
