@@ -1,5 +1,7 @@
-"""FastMCP server for Prussian Dictionary - Pure MCP tools via stdio transport."""
+"""FastMCP server for Prussian Dictionary - Pure MCP tools via stdio or SSE transport."""
 
+import argparse
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -105,17 +107,6 @@ async def chat_prussian(
     """
     session = ctx.session
 
-    # Check if client supports MCP Sampling
-    try:
-        sampling_cap = types.SamplingCapability()
-        if not session.check_client_capability(
-            types.ClientCapabilities(sampling=sampling_cap)
-        ):
-            return {"error": "Client does not support MCP Sampling"}
-    except Exception:
-        # If capability check fails, try sampling anyway
-        pass
-
     # Build system prompt for Claude
     language_name = "German" if language == "de" else "English"
     system_prompt = f"""You are an expert on Old Prussian language and culture.
@@ -180,5 +171,54 @@ If you don't have information, say so clearly."""
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Run server with stdio transport (default MCP protocol)
-    mcp.run(transport="stdio")
+    parser = argparse.ArgumentParser(
+        description="Prussian Dictionary MCP Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Transport modes:
+  stdio (default)  - For local CLI clients (Claude Code, Claude Desktop)
+  sse              - For HTTP clients (Claude Web) via SSE protocol
+
+Examples:
+  python mcp_server.py                    # Local: stdio on stdin/stdout
+  python mcp_server.py --web              # Web: SSE on http://localhost:8001
+  python mcp_server.py --web --port 9000  # Web: SSE on custom port
+        """
+    )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        default=os.getenv("MCP_TRANSPORT") == "sse",
+        help="Use SSE transport for Claude Web (default: stdio for local CLI)"
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("MCP_HOST", "127.0.0.1"),
+        help="Server host for SSE mode (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("MCP_PORT", "8001")),
+        help="Server port for SSE mode (default: 8001)"
+    )
+
+    args = parser.parse_args()
+
+    if args.web:
+        # For SSE mode, set environment variables for uvicorn
+        os.environ["FASTMCP_HOST"] = args.host
+        os.environ["FASTMCP_PORT"] = str(args.port)
+
+        print(f"Starting MCP server in web mode (SSE)")
+        print(f"  Address: http://{args.host}:{args.port}")
+        print(f"  SSE endpoint: http://{args.host}:{args.port}/sse")
+        print(f"\nConfigure in Claude Web with:")
+        print(f"  {{'type': 'sse', 'url': 'http://{args.host}:{args.port}/sse'}}")
+
+        # Run with SSE transport
+        mcp.run(transport="sse")
+    else:
+        print("Starting MCP server in local mode (stdio)")
+        print("Configure in .mcp.json with: {'command': 'python', 'args': ['mcp_server.py']}")
+        mcp.run(transport="stdio")
