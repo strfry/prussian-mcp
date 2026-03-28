@@ -197,14 +197,14 @@ class SearchEngine:
         # Check if it's a lemma
         if word_lower in self.word_to_entry:
             entry = self.word_to_entry[word_lower]
-            results.append(self._format_lookup_result(entry, include_forms=True))
+            results.append(self._format_lookup_result(entry, matched_form=word_lower))
 
         # Check if it's an inflected form
         elif word_lower in self.form_to_lemma:
             lemma = self.form_to_lemma[word_lower]
             entry = self.word_to_entry.get(lemma)
             if entry:
-                results.append(self._format_lookup_result(entry, include_forms=True))
+                results.append(self._format_lookup_result(entry, matched_form=word_lower))
 
         # If no exact match and fuzzy is enabled, try macron-normalized lookup
         if not results and fuzzy:
@@ -213,7 +213,7 @@ class SearchEngine:
             # Find all lemmata that match when normalized
             for lemma, entry in self.word_to_entry.items():
                 if self._normalize_macrons(lemma) == word_normalized:
-                    results.append(self._format_lookup_result(entry, include_forms=True))
+                    results.append(self._format_lookup_result(entry, matched_form=word_lower))
 
             # Find all forms that match when normalized
             if not results:
@@ -221,7 +221,7 @@ class SearchEngine:
                     if self._normalize_macrons(form) == word_normalized:
                         entry = self.word_to_entry.get(lemma)
                         if entry:
-                            result = self._format_lookup_result(entry, include_forms=True)
+                            result = self._format_lookup_result(entry, matched_form=word_lower)
                             if result not in results:
                                 results.append(result)
 
@@ -231,8 +231,31 @@ class SearchEngine:
         """Remove macrons for fuzzy matching."""
         return word.replace('ā', 'a').replace('ē', 'e').replace('ī', 'i').replace('ō', 'o').replace('ū', 'u')
 
-    def _format_lookup_result(self, entry: Dict[str, Any], include_forms: bool = False) -> Dict[str, Any]:
-        """Format an entry for lookup results."""
+    def _find_json_paths(self, obj, target: str, path: List[str] = []) -> List[List[str]]:
+        """Recursively find all paths in a JSON structure where a value matches target."""
+        results = []
+        target_lower = target.lower()
+        target_normalized = self._normalize_macrons(target_lower)
+
+        if isinstance(obj, str):
+            val = obj.lower()
+            if val == target_lower or self._normalize_macrons(val) == target_normalized:
+                results.append(list(path))
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                results.extend(self._find_json_paths(v, target, path + [k]))
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                results.extend(self._find_json_paths(v, target, path + [str(i)]))
+
+        return results
+
+    def _format_lookup_result(self, entry: Dict[str, Any], matched_form: str = None) -> Dict[str, Any]:
+        """Format an entry for lookup results.
+
+        If matched_form differs from the lemma, only return the paths
+        where the form was found, not the entire paradigm.
+        """
         translations = entry.get('translations', {})
         de_trans = translations.get('miks', [])
         en_trans = translations.get('engl', [])
@@ -242,9 +265,13 @@ class SearchEngine:
             'en': en_trans[0] if en_trans else '',
         }
 
-        if include_forms and entry.get('forms'):
-            result['forms'] = entry['forms']
-            result['paradigm'] = entry.get('paradigm', '')
-            result['gender'] = entry.get('gender', '')
+        if entry.get('gender'):
+            result['gender'] = entry['gender']
+
+        if matched_form and matched_form != entry.get('word', '').lower():
+            paths = self._find_json_paths(entry.get('forms', {}), matched_form)
+            if paths:
+                result['matched_form'] = matched_form
+                result['matched_paths'] = ['/'.join(p) for p in paths]
 
         return result
