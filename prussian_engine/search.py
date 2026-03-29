@@ -9,6 +9,7 @@ from .config import DICTIONARY_PATH, EMBEDDINGS_PATH, QUERY_PREFIX
 
 try:
     from sentence_transformers import SentenceTransformer
+
     HAS_SENTENCE_TRANSFORMERS = True
 except ImportError:
     HAS_SENTENCE_TRANSFORMERS = False
@@ -37,7 +38,7 @@ class SearchEngine:
         if not entries_file.exists():
             raise FileNotFoundError(f"Entries file not found: {entries_file}")
 
-        with open(entries_file, 'r', encoding='utf-8') as f:
+        with open(entries_file, "r", encoding="utf-8") as f:
             self.entries = json.load(f)
         print(f"Loaded {len(self.entries)} dictionary entries")
 
@@ -54,19 +55,21 @@ class SearchEngine:
         """Build lookup indices for words and forms."""
         # Map lemmas to entries
         for entry in self.entries:
-            word = entry.get('word', '').lower()
+            word = entry.get("word", "").lower()
             if word:
                 self.word_to_entry[word] = entry
 
         # Map inflected forms to lemmas
         for entry in self.entries:
-            lemma = entry.get('word', '').lower()
+            lemma = entry.get("word", "").lower()
             forms = self._extract_all_forms(entry)
             for form in forms:
                 if form and form not in self.form_to_lemma:
                     self.form_to_lemma[form] = lemma
 
-        print(f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms")
+        print(
+            f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
+        )
 
     def _load_model(self):
         """Load E5 model for query encoding."""
@@ -75,41 +78,41 @@ class SearchEngine:
             return
 
         print("Loading E5 model for queries...")
-        self.model = SentenceTransformer('intfloat/multilingual-e5-large')
+        self.model = SentenceTransformer("intfloat/multilingual-e5-large")
         print("Model loaded")
 
     def _extract_all_forms(self, entry: Dict[str, Any]) -> set:
         """Extract all inflected forms from an entry."""
         forms = set()
-        forms_data = entry.get('forms', {})
+        forms_data = entry.get("forms", {})
 
         # Declension (nouns, adjectives)
-        if 'declension' in forms_data:
-            for decl in forms_data['declension']:
-                for case in decl.get('cases', []):
-                    if case.get('singular'):
-                        forms.add(case['singular'].lower())
-                    if case.get('plural'):
-                        forms.add(case['plural'].lower())
+        if "declension" in forms_data:
+            for decl in forms_data["declension"]:
+                for case in decl.get("cases", []):
+                    if case.get("singular"):
+                        forms.add(case["singular"].lower())
+                    if case.get("plural"):
+                        forms.add(case["plural"].lower())
 
         # Conjugation (verbs)
-        for mood in ['indicative', 'subjunctive', 'optative', 'imperative']:
+        for mood in ["indicative", "subjunctive", "optative", "imperative"]:
             if mood in forms_data:
                 for item in forms_data[mood]:
                     if isinstance(item, dict):
-                        if 'forms' in item:  # indicative has nested structure
-                            for form_obj in item['forms']:
-                                if form_obj.get('form'):
-                                    forms.add(form_obj['form'].lower())
-                        elif 'form' in item:  # other moods
-                            forms.add(item['form'].lower())
+                        if "forms" in item:  # indicative has nested structure
+                            for form_obj in item["forms"]:
+                                if form_obj.get("form"):
+                                    forms.add(form_obj["form"].lower())
+                        elif "form" in item:  # other moods
+                            forms.add(item["form"].lower())
 
         # Participles and infinitives
-        for category in ['participles', 'infinitives']:
+        for category in ["participles", "infinitives"]:
             if category in forms_data:
                 for item in forms_data[category]:
-                    if item.get('form'):
-                        forms.add(item['form'].lower())
+                    if item.get("form"):
+                        forms.add(item["form"].lower())
 
         return forms
 
@@ -152,7 +155,7 @@ class SearchEngine:
         similarities = self._cosine_similarity(query_embedding, self.embeddings)
 
         # Get top-k indices
-        top_indices = np.argsort(similarities)[::-1][:top_k * 2]  # Get more to filter
+        top_indices = np.argsort(similarities)[::-1][: top_k * 2]  # Get more to filter
 
         # Filter for entries with translations and format results
         results = []
@@ -161,23 +164,48 @@ class SearchEngine:
                 continue
 
             entry = self.entries[idx]
-            translations = entry.get('translations', {})
+            translations = entry.get("translations", {})
 
             # Only return lemmas with translations (not inflected forms)
             if translations:
-                de_trans = translations.get('miks', [])
-                en_trans = translations.get('engl', [])
-                results.append({
-                    'word': entry.get('word', ''),
-                    'de': de_trans[0] if de_trans else '',
-                    'en': en_trans[0] if en_trans else '',
-                    'score': float(similarities[idx])
-                })
+                de_trans = translations.get("miks", [])
+                en_trans = translations.get("engl", [])
+                results.append(
+                    {
+                        "word": entry.get("word", ""),
+                        "de": de_trans[0] if de_trans else "",
+                        "en": en_trans[0] if en_trans else "",
+                        "score": float(similarities[idx]),
+                    }
+                )
 
             if len(results) >= top_k:
                 break
 
         return results
+
+    def get_word_forms(self, lemma: str) -> Dict[str, Any]:
+        """
+        Get all declension or conjugation forms for a Prussian lemma.
+
+        Args:
+            lemma: Prussian lemma (base form)
+
+        Returns:
+            Dictionary with lemma, translations, gender, and all forms
+        """
+        results = self.lookup(lemma)
+        if not results:
+            return {"error": f"Word not found: {lemma}"}
+
+        result = results[0]
+        return {
+            "lemma": result["word"],
+            "translations": {"de": result["de"], "en": result["en"]},
+            "paradigm": result.get("paradigm", ""),
+            "gender": result.get("gender", ""),
+            "forms": result.get("forms", {}),
+        }
 
     def lookup(self, prussian_word: str, fuzzy: bool = True) -> List[Dict[str, Any]]:
         """
@@ -204,7 +232,9 @@ class SearchEngine:
             lemma = self.form_to_lemma[word_lower]
             entry = self.word_to_entry.get(lemma)
             if entry:
-                results.append(self._format_lookup_result(entry, matched_form=word_lower))
+                results.append(
+                    self._format_lookup_result(entry, matched_form=word_lower)
+                )
 
         # If no exact match and fuzzy is enabled, try macron-normalized lookup
         if not results and fuzzy:
@@ -213,7 +243,9 @@ class SearchEngine:
             # Find all lemmata that match when normalized
             for lemma, entry in self.word_to_entry.items():
                 if self._normalize_macrons(lemma) == word_normalized:
-                    results.append(self._format_lookup_result(entry, matched_form=word_lower))
+                    results.append(
+                        self._format_lookup_result(entry, matched_form=word_lower)
+                    )
 
             # Find all forms that match when normalized
             if not results:
@@ -221,7 +253,9 @@ class SearchEngine:
                     if self._normalize_macrons(form) == word_normalized:
                         entry = self.word_to_entry.get(lemma)
                         if entry:
-                            result = self._format_lookup_result(entry, matched_form=word_lower)
+                            result = self._format_lookup_result(
+                                entry, matched_form=word_lower
+                            )
                             if result not in results:
                                 results.append(result)
 
@@ -229,9 +263,17 @@ class SearchEngine:
 
     def _normalize_macrons(self, word: str) -> str:
         """Remove macrons for fuzzy matching."""
-        return word.replace('ā', 'a').replace('ē', 'e').replace('ī', 'i').replace('ō', 'o').replace('ū', 'u')
+        return (
+            word.replace("ā", "a")
+            .replace("ē", "e")
+            .replace("ī", "i")
+            .replace("ō", "o")
+            .replace("ū", "u")
+        )
 
-    def _find_json_paths(self, obj, target: str, path: List[str] = []) -> List[List[str]]:
+    def _find_json_paths(
+        self, obj, target: str, path: List[str] = []
+    ) -> List[List[str]]:
         """Recursively find all paths in a JSON structure where a value matches target."""
         results = []
         target_lower = target.lower()
@@ -250,28 +292,33 @@ class SearchEngine:
 
         return results
 
-    def _format_lookup_result(self, entry: Dict[str, Any], matched_form: str = None) -> Dict[str, Any]:
+    def _format_lookup_result(
+        self, entry: Dict[str, Any], matched_form: str = None
+    ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
         If matched_form differs from the lemma, only return the paths
         where the form was found, not the entire paradigm.
         """
-        translations = entry.get('translations', {})
-        de_trans = translations.get('miks', [])
-        en_trans = translations.get('engl', [])
+        translations = entry.get("translations", {})
+        de_trans = translations.get("miks", [])
+        en_trans = translations.get("engl", [])
         result = {
-            'word': entry.get('word', ''),
-            'de': de_trans[0] if de_trans else '',
-            'en': en_trans[0] if en_trans else '',
+            "word": entry.get("word", ""),
+            "de": de_trans[0] if de_trans else "",
+            "en": en_trans[0] if en_trans else "",
         }
 
-        if entry.get('gender'):
-            result['gender'] = entry['gender']
+        if entry.get("gender"):
+            result["gender"] = entry["gender"]
 
-        if matched_form and matched_form != entry.get('word', '').lower():
-            paths = self._find_json_paths(entry.get('forms', {}), matched_form)
+        if entry.get("forms"):
+            result["forms"] = entry["forms"]
+
+        if matched_form and matched_form != entry.get("word", "").lower():
+            paths = self._find_json_paths(entry.get("forms", {}), matched_form)
             if paths:
-                result['matched_form'] = matched_form
-                result['matched_paths'] = ['/'.join(p) for p in paths]
+                result["matched_form"] = matched_form
+                result["matched_paths"] = ["/".join(p) for p in paths]
 
         return result

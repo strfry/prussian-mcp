@@ -1,21 +1,203 @@
-"""FastMCP server for Prussian Dictionary - Pure MCP tools via stdio or SSE transport."""
+"""FastMCP server for Prussian Dictionary - MCP tools with streaming LLM proxy."""
 
 import argparse
+import json
+import mimetypes
 import os
-from typing import Any
+from typing import Any, AsyncIterator
+from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP, Context
-import mcp.types as types
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from openai import OpenAI
+from starlette.responses import Response, StreamingResponse, FileResponse
 
 import prussian_engine
+from prussian_engine.config import (
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    OPENAI_MODEL,
+    SYSTEM_PROMPT_PATH,
+)
+from prussian_engine.tools import TOOLS
 
-# Initialize FastMCP
-mcp = FastMCP("Prussian Dictionary")
+# Initialize FastMCP with security settings
+# Allow strfry.org for remote access via SSH tunnel
+security_settings = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        "127.0.0.1:*",
+        "localhost:*",
+        "strfry.org",
+    ],  # No port in Host header
+    allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "https://strfry.org"],
+)
+mcp = FastMCP(
+    "Prussian Dictionary",
+    transport_security=security_settings,
+    debug=True,
+    log_level="DEBUG",
+    mount_path="/prussian-mcp",  # Tells FastMCP it's running under this prefix
+)
 
 # Load search engine at startup (no chat_engine needed for MCP tools)
 print("Loading Prussian Dictionary search engine...")
 search_engine = prussian_engine.SearchEngine()
 print("Search engine loaded successfully!")
+
+# Initialize OpenAI client for streaming proxy
+llm_client = OpenAI(api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL)
+llm_model = OPENAI_MODEL
+
+
+# Load system prompt
+def _load_system_prompt() -> str:
+    """Load system prompt from file."""
+    if SYSTEM_PROMPT_PATH.exists():
+        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    return "You are an assistant."
+
+
+system_prompt_template = _load_system_prompt()
+
+
+# ── Streaming LLM Proxy ──────────────────────────────────────────────────────
+
+
+def _format_system_prompt(language: str = "de") -> str:
+    """Format system prompt with language code."""
+    lang_code = "LT" if language == "lt" else "DE"
+    return system_prompt_template.replace("{lang_code}", lang_code)
+
+
+def _sse_event(event_type: str, data: Any) -> str:
+    """Format data as SSE event."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _stream_completions(
+    messages: list,
+    tools: list | None = None,
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+    language: str = "de",
+) -> AsyncIterator[bytes]:
+    """Stream completions from LLM with tool call support."""
+    # Format system prompt with language
+    system_content = _format_system_prompt(language)
+
+    # Build full messages array
+    full_messages = [{"role": "system", "content": system_content}]
+    full_messages.extend(messages)
+
+    try:
+        # Make streaming request
+        stream = llm_client.chat.completions.create(
+            model=llm_model,
+            messages=full_messages,
+            tools=tools,
+            tool_choice="auto" if tools else None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        tool_calls_buffer: dict[int, dict] = {}
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+
+            # Handle reasoning content (DeepSeek R1 style)
+            if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                yield _sse_event(
+                    "reasoning_delta", {"content": delta.reasoning_content}
+                ).encode()
+
+            # Handle content
+            if delta.content:
+                yield _sse_event("content_delta", {"content": delta.content}).encode()
+
+            # Handle tool calls
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_buffer:
+                        tool_calls_buffer[idx] = {
+                            "id": "",
+                            "type": "function",
+                            "function": {"name": "", "arguments": ""},
+                        }
+
+                    if tc.id:
+                        tool_calls_buffer[idx]["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            tool_calls_buffer[idx]["function"]["name"] = (
+                                tc.function.name
+                            )
+                        if tc.function.arguments:
+                            tool_calls_buffer[idx]["function"]["arguments"] += (
+                                tc.function.arguments
+                            )
+
+                    yield _sse_event(
+                        "tool_call_delta",
+                        {"index": idx, "tool_call": tool_calls_buffer[idx]},
+                    ).encode()
+
+            # Handle done
+            if chunk.choices[0].finish_reason:
+                yield _sse_event(
+                    "done", {"finish_reason": chunk.choices[0].finish_reason}
+                ).encode()
+
+    except Exception as e:
+        yield _sse_event("error", {"error": str(e)}).encode()
+
+
+@mcp.custom_route("/api/completions", methods=["POST"])
+async def completions_endpoint(request):
+    """
+    Streaming LLM proxy endpoint.
+
+    Request JSON:
+        - messages: Chat messages array (list)
+        - tools: Tool definitions array (list, optional)
+        - temperature: Sampling temperature (float, default 0.7)
+        - max_tokens: Maximum tokens (int, default 2000)
+        - language: Response language 'de' or 'lt' (str, default 'de')
+
+    Response: SSE stream with events:
+        - content_delta: {"content": string}
+        - reasoning_delta: {"content": string}
+        - tool_call_delta: {"index": int, "tool_call": {...}}
+        - done: {"finish_reason": string}
+        - error: {"error": string}
+    """
+    try:
+        data = await request.json()
+        messages = data.get("messages", [])
+        tools = data.get("tools", TOOLS)
+        temperature = float(data.get("temperature", 0.7))
+        max_tokens = int(data.get("max_tokens", 2000))
+        language = data.get("language", "de")
+
+        return StreamingResponse(
+            _stream_completions(messages, tools, temperature, max_tokens, language),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except Exception as e:
+        return Response(
+            f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n",
+            media_type="text/event-stream",
+            status_code=500,
+        )
 
 
 # ── MCP Tools ────────────────────────────────────────────────────────────────
@@ -34,11 +216,7 @@ def search_dictionary(query: str, top_k: int = 10) -> list[dict[str, Any]]:
         List of dictionary entries with translations
     """
     results = search_engine.query(query, top_k)
-    return [{
-        "word": r["word"],
-        "de": r["de"],
-        "en": r["en"]
-    } for r in results]
+    return [{"word": r["word"], "de": r["de"], "en": r["en"]} for r in results]
 
 
 @mcp.tool()
@@ -66,106 +244,57 @@ def get_word_forms(lemma: str) -> dict[str, Any]:
     Returns:
         Dictionary with lemma, translations, and all forms
     """
-    results = search_engine.lookup(lemma)
-    if not results:
-        return {"error": f"Word not found: {lemma}"}
-
-    result = results[0]
-    return {
-        "lemma": result["word"],
-        "translations": {
-            "de": result["de"],
-            "en": result["en"]
-        },
-        "paradigm": result.get("paradigm", ""),
-        "gender": result.get("gender", ""),
-        "forms": result.get("forms", {})
-    }
+    return search_engine.get_word_forms(lemma)
 
 
-@mcp.tool()
-async def chat_prussian(
-    ctx: Context,
-    user_message: str,
-    language: str = "de"
-) -> dict[str, Any]:
-    """
-    Chat about Old Prussian using Claude with access to dictionary tools.
+# ── Static Files ────────────────────────────────────────────────────────────────
 
-    The MCP server uses sampling to request Claude to generate responses.
-    Claude can autonomously use the three dictionary tools during generation.
+static_dir = Path(__file__).parent / "ui"
 
-    Args:
-        user_message: User's question or message in German or English
-        language: Response language ('de' for German, 'en' for English)
+if static_dir.exists():
 
-    Returns:
-        Dictionary with:
-        - response: Claude's conversational response
-        - model: Model used for generation
-        - stop_reason: Why generation stopped (e.g., "end_turn")
-    """
-    session = ctx.session
+    @mcp.custom_route("/chatbot.html", methods=["GET"])
+    async def serve_chatbot_html(request):
+        """Serve the chatbot HTML page."""
+        return FileResponse(static_dir / "chatbot.html")
 
-    # Build system prompt for Claude
-    language_name = "German" if language == "de" else "English"
-    system_prompt = f"""You are an expert on Old Prussian language and culture.
-You have access to a comprehensive Old Prussian dictionary with the following tools:
-- search_dictionary: Find words by meaning (German/English to Prussian)
-- lookup_prussian_word: Look up specific Prussian words or inflected forms
-- get_word_forms: Show declensions, conjugations, and word paradigms
-
-Guidelines:
-1. Use the dictionary tools to provide accurate information
-2. Explain word meanings, etymology, and usage patterns
-3. Show examples when helpful
-4. Always respond in {language_name}
-5. Be helpful, accurate, and educational
-
-If you don't have information, say so clearly."""
-
-    # Create user message
-    messages = [
-        types.SamplingMessage(
-            role="user",
-            content=types.TextContent(type="text", text=user_message)
-        )
-    ]
-
-    try:
-        # Request Claude to generate response via sampling
-        # include_context="thisServer" tells Claude to use our 3 tools
-        result = await session.create_message(
-            messages=messages,
-            max_tokens=2000,
-            system_prompt=system_prompt,
-            temperature=0.7,
-            include_context="thisServer"
+    @mcp.custom_route("/chatbot.js", methods=["GET"])
+    async def serve_chatbot_js(request):
+        """Serve the chatbot JavaScript."""
+        return FileResponse(
+            static_dir / "chatbot.js", media_type="application/javascript"
         )
 
-        # Extract response text
-        response_text = ""
-        if hasattr(result, "content"):
-            if isinstance(result.content, types.TextContent):
-                response_text = result.content.text
-            elif isinstance(result.content, str):
-                response_text = result.content
-            else:
-                response_text = str(result.content)
-        else:
-            response_text = str(result)
+    @mcp.custom_route("/mcp-client.js", methods=["GET"])
+    async def serve_mcp_client_js(request):
+        """Serve the MCP client JavaScript."""
+        return FileResponse(
+            static_dir / "mcp-client.js", media_type="application/javascript"
+        )
 
-        return {
-            "response": response_text,
-            "model": result.model if hasattr(result, "model") else "unknown",
-            "stop_reason": result.stopReason if hasattr(result, "stopReason") else None
-        }
+    @mcp.custom_route("/chat-engine.js", methods=["GET"])
+    async def serve_chat_engine_js(request):
+        """Serve the chat engine JavaScript."""
+        return FileResponse(
+            static_dir / "chat-engine.js", media_type="application/javascript"
+        )
 
-    except Exception as e:
-        return {
-            "error": f"Sampling request failed: {str(e)}",
-            "details": type(e).__name__
-        }
+    @mcp.custom_route("/images/{filename}", methods=["GET"])
+    async def serve_images(request):
+        """Serve image files."""
+        filename = request.path_params.get("filename", "")
+        if ".." in filename or "/" in filename:
+            return Response("Invalid filename", status_code=400)
+
+        image_path = static_dir / "images" / filename
+        if image_path.exists() and image_path.is_file():
+            mime_type, _ = mimetypes.guess_type(str(image_path))
+            return FileResponse(image_path, media_type=mime_type)
+        return Response("Image not found", status_code=404)
+
+    print(f"Serving static files from: {static_dir}")
+else:
+    print(f"Warning: Static directory not found: {static_dir}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -183,24 +312,24 @@ Examples:
   python mcp_server.py                    # Local: stdio on stdin/stdout
   python mcp_server.py --web              # Web: SSE on http://localhost:8001
   python mcp_server.py --web --port 9000  # Web: SSE on custom port
-        """
+        """,
     )
     parser.add_argument(
         "--web",
         action="store_true",
         default=os.getenv("MCP_TRANSPORT") == "sse",
-        help="Use SSE transport for Claude Web (default: stdio for local CLI)"
+        help="Use SSE transport for Claude Web (default: stdio for local CLI)",
     )
     parser.add_argument(
         "--host",
         default=os.getenv("MCP_HOST", "127.0.0.1"),
-        help="Server host for SSE mode (default: 127.0.0.1)"
+        help="Server host for SSE mode (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=int(os.getenv("MCP_PORT", "8001")),
-        help="Server port for SSE mode (default: 8001)"
+        help="Server port for SSE mode (default: 8001)",
     )
 
     args = parser.parse_args()
@@ -220,5 +349,7 @@ Examples:
         mcp.run(transport="sse")
     else:
         print("Starting MCP server in local mode (stdio)")
-        print("Configure in .mcp.json with: {'command': 'python', 'args': ['mcp_server.py']}")
+        print(
+            "Configure in .mcp.json with: {'command': 'python', 'args': ['mcp_server.py']}"
+        )
         mcp.run(transport="stdio")

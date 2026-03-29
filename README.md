@@ -51,11 +51,10 @@ python mcp_server.py
 ```
 - **Transport**: stdio (pure MCP protocol)
 - **No LLM needed** - just dictionary tools
-- 4 MCP tools available:
+- 3 MCP tools available:
   - `search_dictionary` - Semantic search
   - `lookup_prussian_word` - Word lookup
   - `get_word_forms` - Declensions/conjugations
-  - `chat_prussian` - Chat via MCP Sampling (when supported by client)
 - **Configure**: `.mcp.json` (already set up)
 - **Best for**: Local development with Claude Code/Desktop
 
@@ -96,16 +95,6 @@ python mcp_server.py
 python web_server.py
 ```
 
-### Advanced: Using Sampling with Claude Web
-
-The MCP server includes a `chat_prussian` tool that uses MCP Sampling to request Claude to generate conversational responses. This requires:
-
-1. Claude Web or client that supports MCP Sampling
-2. MCP Server running in web mode (`--web`)
-3. Configuration for Claude Web
-
-**Status**: Currently testing with Claude Web to verify Sampling support.
-
 ## CLI Testing
 
 Test the engine directly without the web server:
@@ -113,9 +102,6 @@ Test the engine directly without the web server:
 ```bash
 # Test semantic search
 python scripts/test_search.py
-
-# Test chat functionality
-python scripts/test_chat.py
 ```
 
 ## API
@@ -146,9 +132,9 @@ Response:
 
 ### MCP Tools
 
-- `search_dictionary(query, top_k)` - Semantic search
-- `lookup_prussian_word(word)` - Lookup Prussian word
-- `get_word_forms(lemma)` - Get declension/conjugation
+- `search_dictionary(query, top_k)` - Semantic search (German/English → Prussian)
+- `lookup_prussian_word(word)` - Lookup Prussian word (Prussian → German/English)
+- `get_word_forms(lemma)` - Get declensions/conjugations
 
 ## Architecture
 
@@ -187,7 +173,7 @@ The `prussian_engine` package is designed to be importable for CLI tools:
 ```python
 from prussian_engine import load
 
-search_engine, chat_engine = load()
+search_engine = load()
 results = search_engine.query("Haus", top_k=5)
 ```
 
