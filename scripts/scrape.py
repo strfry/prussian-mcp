@@ -18,11 +18,11 @@ Usage:
 import json
 import re
 import html
+import asyncio
 import time
 import sys
 import os
-import urllib.parse
-import urllib.request
+import httpx
 
 BASE = "https://wirdeins.twanksta.org"
 DIALECT = "semba"
@@ -32,6 +32,8 @@ RESULT_CAP = 30  # If results >= this, subdivide with longer prefix
 LANGUAGES = ["engl", "miks", "leit", "latt", "pols", "mask"]
 
 ALPHABET = sorted(set(list("abdeghijklmnoprstuwz") + ["ā", "ē", "ī", "ō", "ū", "š", "ž"]))
+
+CONCURRENCY = 4
 
 WORDLIST_FILE = "wordlist.json"
 OUTPUT_FILE = "prussian_dictionary.json"
@@ -80,48 +82,112 @@ def entry_key(e):
     return (e["word"], e["paradigm"], e["desc"])
 
 
-# --- HTTP ---
+# --- HTTP with adaptive rate limiting ---
 
-def fetch(url, params=None, post_data=None, retries=3):
-    if params:
-        url = url + "?" + urllib.parse.urlencode(params)
-    if post_data:
-        data = urllib.parse.urlencode(post_data).encode()
-        req = urllib.request.Request(url, data=data)
-    else:
-        req = urllib.request.Request(url)
-    req.add_header("User-Agent", "PrussianDictionaryScraper/1.0 (linguistic research)")
-    
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read()
-                # Try UTF-8 first, fall back to ISO-8859-1
-                try:
-                    return raw.decode("utf-8-sig")
-                except UnicodeDecodeError:
-                    return raw.decode("iso-8859-1", errors="replace")
-        except urllib.error.HTTPError as e:
-            # Retry on any 5xx server error
-            if 500 <= e.code < 600:
-                if attempt < retries - 1:
-                    wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
-                    print(f"\n  [HTTP {e.code}] Warte {wait}s...", file=sys.stderr, flush=True)
-                    time.sleep(wait)
+class AdaptiveThrottle:
+    """Adjusts delay based on server response times.
+
+    Tracks a baseline from the first few requests. When response times
+    rise significantly above that baseline, the delay between requests
+    is increased. When they drop back, the delay shrinks again.
+
+    The semaphore limits how many requests are in-flight at once.
+    """
+
+    def __init__(self, min_delay=0.05, max_delay=2.0, concurrency=4, window=20):
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        self.delay = min_delay
+        self.concurrency = concurrency
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self.window = window
+        self.times = []
+        self.baseline = None
+        self._lock = asyncio.Lock()
+
+    async def record(self, elapsed):
+        async with self._lock:
+            self.times.append(elapsed)
+            if len(self.times) > self.window:
+                self.times.pop(0)
+
+            if self.baseline is None:
+                if len(self.times) >= self.window:
+                    self.baseline = sorted(self.times)[len(self.times) // 2]
+                    print(f"  [throttle] baseline: {self.baseline*1000:.0f}ms (concurrency={self.concurrency})", file=sys.stderr, flush=True)
+                return
+
+            current = sorted(self.times)[len(self.times) // 2]
+            ratio = current / self.baseline
+
+            if ratio > 2.0:
+                self.delay = min(self.delay * 1.5, self.max_delay)
+                print(f"  [throttle] slow ({current*1000:.0f}ms vs {self.baseline*1000:.0f}ms baseline), delay → {self.delay:.2f}s", file=sys.stderr, flush=True)
+            elif ratio < 1.3 and self.delay > self.min_delay:
+                self.delay = max(self.delay * 0.8, self.min_delay)
+
+    def stats(self):
+        if not self.times:
+            return "no requests yet"
+        med = sorted(self.times)[len(self.times) // 2]
+        if self.baseline:
+            return f"median={med*1000:.0f}ms delay={self.delay*1000:.0f}ms baseline={self.baseline*1000:.0f}ms"
+        return f"warming up ({len(self.times)}/{self.window})"
+
+
+_throttle = None
+
+def get_throttle():
+    global _throttle
+    if _throttle is None:
+        _throttle = AdaptiveThrottle(min_delay=DELAY, concurrency=CONCURRENCY)
+    return _throttle
+
+
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(
+            http2=True,
+            timeout=30,
+            headers={"User-Agent": "PrussianDictionaryScraper/1.0 (linguistic research)"},
+            follow_redirects=True,
+        )
+    return _client
+
+
+async def fetch(url, params=None, post_data=None, retries=3):
+    client = get_client()
+    throttle = get_throttle()
+    async with throttle.semaphore:
+        for attempt in range(retries):
+            try:
+                await asyncio.sleep(throttle.delay)
+                t0 = time.monotonic()
+                if post_data:
+                    resp = await client.post(url, params=params, data=post_data)
+                else:
+                    resp = await client.get(url, params=params)
+                elapsed = time.monotonic() - t0
+                await throttle.record(elapsed)
+                resp.raise_for_status()
+                return resp.text
+            except httpx.HTTPStatusError as e:
+                if 500 <= e.response.status_code < 600 and attempt < retries - 1:
+                    wait = 5 * (2 ** attempt)
+                    print(f"\n  [HTTP {e.response.status_code}] Warte {wait}s...", file=sys.stderr, flush=True)
+                    await asyncio.sleep(wait)
                 else:
                     raise
-            else:
-                raise
-        except urllib.error.URLError as e:
-            # Retry on network errors (timeout, connection reset, etc.)
-            if attempt < retries - 1:
-                wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
-                print(f"\n  [Network Error: {e.reason}] Warte {wait}s...", file=sys.stderr, flush=True)
-                time.sleep(wait)
-            else:
-                raise
-        except Exception:
-            raise
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as e:
+                if attempt < retries - 1:
+                    wait = 5 * (2 ** attempt)
+                    print(f"\n  [Network Error: {e}] Warte {wait}s...", file=sys.stderr, flush=True)
+                    await asyncio.sleep(wait)
+                else:
+                    raise
 
 
 def clean(s):
@@ -182,91 +248,129 @@ def parse_forms(html_text):
 
 # --- Phase 1: Enumerate ---
 
-def search_prefix(prefix):
+async def search_prefix(prefix):
     """Search for a single prefix, return parsed results."""
-    time.sleep(DELAY)
     params = {"s": prefix, "language": "engl", "dia": DIALECT}
-    text = fetch(BASE + "/search/", params=params)
+    text = await fetch(BASE + "/search/", params=params)
     return parse_search_results(text)
 
 
-def search_prefix_recursive(prefix, existing, max_depth=6):
-    """
-    Recursively search with prefix subdivision when results are capped.
-
-    Args:
-        prefix: Prefix to search
-        existing: Set of existing entry keys to avoid duplicates
-        max_depth: Maximum prefix length (prevent infinite recursion)
-
-    Returns:
-        List of new unique entries
-    """
-    results = search_prefix(prefix)
+async def search_prefix_recursive(prefix, existing, max_depth=6):
+    """Recursively search with prefix subdivision when results are capped."""
+    results = await search_prefix(prefix)
     new_entries = []
 
-    # Add unique results
     for r in results:
         k = entry_key(r)
         if k not in existing:
             existing.add(k)
             new_entries.append(r)
 
-    # If we hit the result cap and haven't reached max depth, subdivide
     if len(results) >= RESULT_CAP and len(prefix) < max_depth:
         print(f"    '{prefix}' has {len(results)} results (≥{RESULT_CAP}), subdividing...", file=sys.stderr, flush=True)
-        for letter in ALPHABET:
-            sub_prefix = prefix + letter
-            sub_entries = search_prefix_recursive(sub_prefix, existing, max_depth)
+        # Subdivisions can run concurrently (throttle limits in-flight)
+        tasks = [search_prefix_recursive(prefix + letter, existing, max_depth)
+                 for letter in ALPHABET]
+        for sub_entries in await asyncio.gather(*tasks):
             new_entries.extend(sub_entries)
 
     return new_entries
 
 
-def phase_enumerate():
-    """Phase 1: Build wordlist by searching all prefix combinations (2-letter, then 3-letter)."""
+async def phase_enumerate():
+    """Phase 1: Build wordlist by searching all prefix combinations."""
     state = load_state()
     wordlist = load_wordlist()
     existing = {entry_key(e) for e in wordlist}
     done_prefixes = set(state.get("done_prefixes", []))
-    done_3letter = set(state.get("done_3letter", []))
 
-    # Phase 1a: 2-letter prefixes
     all_2letter = [a + b for a in ALPHABET for b in ALPHABET]
     remaining_2letter = [p for p in all_2letter if p not in done_prefixes]
 
     if remaining_2letter:
-        print(f"Phase 1a: 2-letter prefixes with recursive subdivision ({len(done_prefixes)}/{len(all_2letter)} done, {len(wordlist)} words)", file=sys.stderr)
+        print(f"Phase 1: 2-letter prefixes ({len(done_prefixes)}/{len(all_2letter)} done, {len(wordlist)} words)", file=sys.stderr)
 
-        for i, prefix in enumerate(remaining_2letter):
-            # Use recursive search that subdivides when needed
-            new_entries = search_prefix_recursive(prefix, existing, max_depth=6)
-            wordlist.extend(new_entries)
-            new = len(new_entries)
+        # Process in batches of 27 (one alphabet row)
+        batch_size = 27
+        for batch_start in range(0, len(remaining_2letter), batch_size):
+            batch = remaining_2letter[batch_start:batch_start + batch_size]
 
-            done_prefixes.add(prefix)
+            tasks = [search_prefix_recursive(p, existing, max_depth=6) for p in batch]
+            results = await asyncio.gather(*tasks)
 
-            # Save every 27 prefixes (= one "row" of the alphabet)
-            if (i + 1) % 27 == 0 or (i + 1) == len(remaining_2letter):
-                state["done_prefixes"] = sorted(done_prefixes)
-                save_wordlist(wordlist)
-                save_state(state)
-                letter = prefix[0]
-                print(f"  '{letter}*': {len(wordlist)} words total", file=sys.stderr, flush=True)
+            for prefix, new_entries in zip(batch, results):
+                wordlist.extend(new_entries)
+                done_prefixes.add(prefix)
 
-    # Phase 1b: Skip 3-letter phase (covered by recursive subdivision in Phase 1a)
-    print(f"\nPhase 1b: Skipped (recursive subdivision handles deep prefixes automatically)", file=sys.stderr)
-    done_3letter = set()  # Mark as done
+            state["done_prefixes"] = sorted(done_prefixes)
+            save_wordlist(wordlist)
+            save_state(state)
+            letter = batch[0][0]
+            print(f"  '{letter}*': {len(wordlist)} words total ({get_throttle().stats()})", file=sys.stderr, flush=True)
 
     state["phase"] = "complete"
-    state["done_3letter"] = sorted(done_3letter)
+    state["done_3letter"] = []
     save_state(state)
-    print(f"\nEnumeration done: {len(wordlist)} unique entries", file=sys.stderr)
+    print(f"\nEnumeration done: {len(wordlist)} unique entries ({get_throttle().stats()})", file=sys.stderr)
 
 
 # --- Phase 2: Complete each entry ---
 
-def phase_complete():
+async def complete_entry(stub):
+    """Fetch all languages + forms for a single word entry."""
+    entry = {
+        "word": stub["word"],
+        "paradigm": stub["paradigm"],
+        "gender": stub["gender"],
+        "desc": stub["desc"],
+        "audio": stub["audio"],
+        "description": stub["description"],
+        "translations": {"engl": stub["translations_engl"]},
+    }
+
+    # Fetch all languages concurrently
+    async def fetch_lang(lang):
+        results = parse_search_results(
+            await fetch(BASE + "/search/", params={"s": entry["word"], "language": lang, "dia": DIALECT})
+        )
+        for r in results:
+            if r["word"] == entry["word"] and r["paradigm"] == entry["paradigm"]:
+                if r["translations_engl"]:
+                    return lang, r["translations_engl"]
+                break
+        return lang, None
+
+    lang_tasks = [fetch_lang(lang) for lang in LANGUAGES if lang != "engl"]
+
+    # Fetch forms concurrently alongside languages
+    forms_task = None
+    if entry["paradigm"]:
+        async def fetch_forms():
+            return parse_forms(
+                await fetch(BASE + "/more/", post_data={
+                    "word": entry["word"], "numb": entry["paradigm"],
+                    "desc": entry["desc"], "dia": DIALECT,
+                })
+            )
+        forms_task = fetch_forms()
+
+    # Run all in parallel
+    all_tasks = lang_tasks + ([forms_task] if forms_task else [])
+    results = await asyncio.gather(*all_tasks)
+
+    # Unpack language results
+    for lang, translations in results[:len(lang_tasks)]:
+        if translations:
+            entry["translations"][lang] = translations
+
+    # Unpack forms
+    if forms_task:
+        entry["forms"] = results[-1]
+
+    return entry
+
+
+async def phase_complete():
     """Phase 2: For each word, fetch all languages + forms."""
     wordlist = load_wordlist()
     entries = load_output()
@@ -274,54 +378,18 @@ def phase_complete():
     total = len(wordlist)
     start_at = len(entries)
 
+    remaining = [s for s in wordlist if entry_key(s) not in done_keys]
     print(f"Phase 2: Complete ({start_at}/{total} done)", file=sys.stderr)
 
-    for i, stub in enumerate(wordlist):
-        k = entry_key(stub)
-        if k in done_keys:
-            continue
-
-        entry = {
-            "word": stub["word"],
-            "paradigm": stub["paradigm"],
-            "gender": stub["gender"],
-            "desc": stub["desc"],
-            "audio": stub["audio"],
-            "description": stub["description"],
-            "translations": {"engl": stub["translations_engl"]},
-        }
-
-        # Fetch other languages
-        for lang in LANGUAGES:
-            if lang == "engl":
-                continue
-            time.sleep(DELAY)
-            results = parse_search_results(
-                fetch(BASE + "/search/", params={"s": entry["word"], "language": lang, "dia": DIALECT})
-            )
-            for r in results:
-                if r["word"] == entry["word"] and r["paradigm"] == entry["paradigm"]:
-                    if r["translations_engl"]:
-                        entry["translations"][lang] = r["translations_engl"]
-                    break
-
-        # Fetch forms
-        if entry["paradigm"]:
-            time.sleep(DELAY)
-            entry["forms"] = parse_forms(
-                fetch(BASE + "/more/", post_data={
-                    "word": entry["word"], "numb": entry["paradigm"],
-                    "desc": entry["desc"], "dia": DIALECT,
-                })
-            )
-
+    for i, stub in enumerate(remaining):
+        entry = await complete_entry(stub)
         entries.append(entry)
-        done_keys.add(k)
+        done_keys.add(entry_key(entry))
 
         idx = len(entries)
         if idx % 10 == 0 or idx == total:
             save_output(entries)
-            print(f"  [{idx}/{total}] {entry['word']}", file=sys.stderr, flush=True)
+            print(f"  [{idx}/{total}] {entry['word']} ({get_throttle().stats()})", file=sys.stderr, flush=True)
 
     save_output(entries)
     print(f"\nDone: {len(entries)} entries in {OUTPUT_FILE}", file=sys.stderr)
@@ -329,52 +397,26 @@ def phase_complete():
 
 # --- Test mode ---
 
-def test_scrape():
+async def test_scrape():
     test_words = ["buttan", "ēitwei", "grazzus", "kwaitītun", "wundan"]
-    entries = []
+    stubs = []
 
     for word in test_words:
         print(f"Searching: {word}", file=sys.stderr)
         results = parse_search_results(
-            fetch(BASE + "/search/", params={"s": word, "language": "engl", "dia": DIALECT})
+            await fetch(BASE + "/search/", params={"s": word, "language": "engl", "dia": DIALECT})
         )
-        results = [r for r in results if r["word"] == word]
+        stubs.extend(r for r in results if r["word"] == word)
 
-        for r in results:
-            entry = {
-                "word": r["word"], "paradigm": r["paradigm"], "gender": r["gender"],
-                "desc": r["desc"], "audio": r["audio"], "description": r["description"],
-                "translations": {"engl": r["translations_engl"]},
-            }
-
-            for lang in LANGUAGES:
-                if lang == "engl":
-                    continue
-                time.sleep(DELAY)
-                lang_results = parse_search_results(
-                    fetch(BASE + "/search/", params={"s": word, "language": lang, "dia": DIALECT})
-                )
-                for lr in lang_results:
-                    if lr["word"] == word and lr["paradigm"] == r["paradigm"]:
-                        if lr["translations_engl"]:
-                            entry["translations"][lang] = lr["translations_engl"]
-                        break
-
-            if entry["paradigm"]:
-                time.sleep(DELAY)
-                entry["forms"] = parse_forms(
-                    fetch(BASE + "/more/", post_data={
-                        "word": entry["word"], "numb": entry["paradigm"],
-                        "desc": entry["desc"], "dia": DIALECT,
-                    })
-                )
-
-            entries.append(entry)
-            print(f"  ✓ {entry['word']} [{entry['paradigm']}]", file=sys.stderr)
+    entries = []
+    for stub in stubs:
+        entry = await complete_entry(stub)
+        entries.append(entry)
+        print(f"  ✓ {entry['word']} [{entry['paradigm']}]", file=sys.stderr)
 
     with open("prussian_test.json", "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=2)
-    print(f"\nSaved {len(entries)} entries to prussian_test.json", file=sys.stderr)
+    print(f"\nSaved {len(entries)} entries to prussian_test.json ({get_throttle().stats()})", file=sys.stderr)
 
 
 # --- Status ---
@@ -401,20 +443,35 @@ def show_status():
 
 # --- Main ---
 
+async def run_and_close(coro):
+    """Run a coroutine then close the shared HTTP client."""
+    try:
+        await coro
+    finally:
+        if _client:
+            await _client.aclose()
+
+
+async def main():
+    state = load_state()
+    if state["phase"] == "enumerate":
+        await phase_enumerate()
+    if state["phase"] in ("complete", "enumerate"):
+        state = load_state()
+        if state["phase"] == "complete":
+            await phase_complete()
+
+
 if __name__ == "__main__":
     for arg in sys.argv:
         if arg.startswith("--delay="):
             DELAY = float(arg.split("=", 1)[1])
+        if arg.startswith("--concurrency="):
+            CONCURRENCY = int(arg.split("=", 1)[1])
 
     if "--status" in sys.argv:
         show_status()
     elif "--test" in sys.argv:
-        test_scrape()
+        asyncio.run(run_and_close(test_scrape()))
     else:
-        state = load_state()
-        if state["phase"] == "enumerate":
-            phase_enumerate()
-        if state["phase"] in ("complete", "enumerate"):
-            state = load_state()
-            if state["phase"] == "complete":
-                phase_complete()
+        asyncio.run(run_and_close(main()))
