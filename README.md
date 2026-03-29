@@ -6,15 +6,14 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 
 ```
 ├── prussian_engine/       Python package (search, chat, tools)
-├── mcp_server.py          MCP tools via stdio (lightweight, for Claude Code/Desktop)
-├── web_server.py          Web server (REST API + static files + LLM)
+├── mcp_server.py          MCP server (stdio + web modes, REST API, static files)
 ├── data/                  Dictionary data (~10,000 entries)
 ├── embeddings/            Pre-computed E5 embeddings
 ├── prompts/               System prompts for LLM
 ├── ui/                    Web interface (HTML/JS)
 ├── scripts/               CLI tools and utilities
 ├── .mcp.json              MCP client configuration
-├── archive/               Archived files (old server.py)
+├── archive/               Archived files
 └── venv/                  Virtual environment
 ```
 
@@ -40,9 +39,7 @@ export OPENAI_API_KEY="dummy"  # or your API key
 
 For local LLM servers, you can use any OpenAI-compatible endpoint.
 
-### 3. Start Server(s)
-
-Choose based on your use case:
+### 3. Start Server
 
 **Option A: MCP Server - Local CLI (Claude Code/Desktop)**
 ```bash
@@ -58,42 +55,24 @@ python mcp_server.py
 - **Configure**: `.mcp.json` (already set up)
 - **Best for**: Local development with Claude Code/Desktop
 
-**Option B: MCP Server - Web Mode (Claude Web)**
+**Option B: MCP Server - Web Mode (Combined MCP + Web UI + OpenAI-compatible API)**
 ```bash
 source venv/bin/activate
 python mcp_server.py --web
 ```
-- **Transport**: SSE (Server-Sent Events over HTTP)
-- **URL**: http://localhost:8000/sse
-- **No LLM needed** - just dictionary tools
-- **Configure in Claude Web**:
+- **Modes**:
+  - **MCP Protocol** (SSE): http://localhost:8001/sse
+  - **Web UI**: http://localhost:8001/chatbot.html
+  - **OpenAI-compatible API**: POST http://localhost:8001/v1/chat/completions
+- **Requires LLM endpoint** configuration (see step 2)
+- **Configure MCP in Claude Web**:
   ```json
   {
     "type": "sse",
-    "url": "http://localhost:8000/sse"
+    "url": "http://localhost:8001/sse"
   }
   ```
-- **Best for**: Testing with Claude Web
-
-**Option C: Web Server (for browser UI + REST API)**
-```bash
-source venv/bin/activate
-python web_server.py
-```
-- **URL**: http://localhost:8000
-- **Requires LLM endpoint** configuration (see step 2)
-- **Web UI**: http://localhost:8000/chatbot.html
-- **Chat API**: POST http://localhost:8000/prussian-api/chat
-- **Best for**: Web UI and REST API integration
-
-**Option D: Both Servers (different terminals)**
-```bash
-# Terminal 1: MCP Server (stdio for local Claude Code/Desktop)
-python mcp_server.py
-
-# Terminal 2: Web Server (HTTP for browser - REST API + static files)
-python web_server.py
-```
+- **Best for**: Everything - single server for MCP protocol, web UI, and REST API
 
 ## CLI Testing
 
@@ -106,29 +85,49 @@ python scripts/test_search.py
 
 ## API
 
-### REST Endpoint
+### REST Endpoints
 
-**POST** `/prussian-api/chat`
+**OpenAI-compatible Chat Completion API**
+
+**POST** `/v1/chat/completions` (streaming)
 
 Request:
 ```json
 {
-  "message": "Hallo!",
-  "language": "de",
-  "history": []
+  "model": "prussian-chat",
+  "messages": [
+    {"role": "user", "content": "Was bedeutet 'lauxnos'?"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "search_dictionary",
+        "description": "Search Prussian dictionary",
+        "parameters": {...}
+      }
+    }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 2000,
+  "stream": true,
+  "language": "de"
 }
 ```
 
-Response:
-```json
-{
-  "prussian": "Kails tū assei!",
-  "translation": "Gegrüßt seist du!",
-  "usedWords": ["kails", "tū", "assei"],
-  "debugInfo": {...},
-  "history": [...]
-}
+Response (streaming SSE):
 ```
+data: {"id": "chatcmpl-...", "object": "chat.completion.chunk", "choices": [{"delta": {"content": "Die"}}]}
+data: {"id": "chatcmpl-...", "object": "chat.completion.chunk", "choices": [{"delta": {"content": " Inschrift..."}}]}
+data: [DONE]
+```
+
+Features:
+- OpenAI-compatible format
+- Streaming and non-streaming modes (`stream: true/false`)
+- Tool calling support
+- Custom `language` parameter (`de` or `lt`)
+- Reasoning content support (DeepSeek R1)
 
 ### MCP Tools
 
@@ -142,14 +141,16 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
 - **prussian_engine**: Modular Python package with search, chat, and tools
-- **mcp_server.py**: Lightweight MCP server (stdio transport) for Claude clients
-- **web_server.py**: HTTP server with REST API and static file serving
+- **mcp_server.py**: FastMCP server with stdio and web transports
+  - MCP Protocol (SSE for remote clients)
+  - OpenAI-compatible REST API (`/v1/chat/completions`)
+  - Static file serving (Web UI)
 - **E5 Embeddings**: Semantic search using multilingual-e5-large (1024-dim)
 - **Tool Calling**: LLM uses tools to search dictionary and build responses
 
 **Two Runtime Modes:**
-1. **MCP Mode** (mcp_server.py): Pure MCP protocol via stdio, no HTTP overhead
-2. **Web Mode** (web_server.py): Full-featured with REST API, static files, and LLM integration
+1. **Local Mode** (`python mcp_server.py`): Pure MCP protocol via stdio for Claude Code/Desktop
+2. **Web Mode** (`python mcp_server.py --web`): All-in-one server with MCP (SSE), OpenAI-compatible API, and Web UI
 
 ## Documentation
 
