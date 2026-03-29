@@ -5,14 +5,17 @@ import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from .config import DICTIONARY_PATH, EMBEDDINGS_PATH, QUERY_PREFIX
+from .config import (
+    DICTIONARY_PATH,
+    EMBEDDINGS_PATH,
+    QUERY_PREFIX,
+    EMBEDDING_MODEL,
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    RERANKER_MODEL,
+)
 
-try:
-    from sentence_transformers import SentenceTransformer
-
-    HAS_SENTENCE_TRANSFORMERS = True
-except ImportError:
-    HAS_SENTENCE_TRANSFORMERS = False
+from openai import OpenAI
 
 
 class SearchEngine:
@@ -24,12 +27,21 @@ class SearchEngine:
         self.embeddings: Optional[np.ndarray] = None
         self.word_to_entry: Dict[str, Dict[str, Any]] = {}
         self.form_to_lemma: Dict[str, str] = {}
-        self.model = None
+
+        # OpenAI client for embedding queries via local server
+        self.embedding_client = OpenAI(
+            api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL
+        )
+
+        # Reranker client (same server, different model)
+        self.reranker_client = OpenAI(
+            api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL
+        )
+        self.reranker_available = False  # Disabled due to OVMS config issue
 
         self._load_dictionary()
         self._load_embeddings()
         self._build_indices()
-        self._load_model()
 
     def _load_dictionary(self):
         """Load dictionary entries that match the embeddings."""
@@ -71,15 +83,57 @@ class SearchEngine:
             f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
         )
 
-    def _load_model(self):
-        """Load E5 model for query encoding."""
-        if not HAS_SENTENCE_TRANSFORMERS:
-            print("Warning: sentence-transformers not installed, search will not work")
-            return
+    def _get_query_embedding(self, query_text: str) -> np.ndarray:
+        """Encode query using local embedding server."""
+        try:
+            response = self.embedding_client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=query_text,
+            )
+            embedding = np.array(response.data[0].embedding, dtype=np.float32)
+            return embedding
+        except Exception as e:
+            print(f"Error encoding query: {e}")
+            return np.zeros(1024, dtype=np.float32)
 
-        print("Loading E5 model for queries...")
-        self.model = SentenceTransformer("intfloat/multilingual-e5-large")
-        print("Model loaded")
+    def _rerank_candidates(
+        self, query: str, candidates: List[Dict[str, Any]], top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Rerank candidates using cross-encoder model."""
+        if not candidates or not self.reranker_available:
+            return candidates
+
+        # Prepare query-document pairs
+        documents = []
+        for entry in candidates:
+            word = entry.get("word", "")
+            de = entry.get("de", "")
+            en = entry.get("en", "")
+            doc_text = f"{word} {de} {en}".strip()
+            documents.append(doc_text)
+
+        try:
+            import requests
+
+            base_url = OPENAI_BASE_URL.rstrip("/")
+            response = requests.post(
+                f"{base_url}/v3/embeddings/rerank",
+                json={"model": RERANKER_MODEL, "query": query, "documents": documents},
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                # Reorder based on reranker scores
+                results = [None] * len(candidates)
+                for item in data.get("results", data.get("data", [])):
+                    index = item.get("index", 0)
+                    if index < len(candidates):
+                        results[index] = candidates[index]
+                return [r for r in results if r is not None][:top_k]
+        except Exception as e:
+            print(f"Reranker error: {e}")
+
+        return candidates[:top_k]
 
     def _extract_all_forms(self, entry: Dict[str, Any]) -> set:
         """Extract all inflected forms from an entry."""
@@ -142,14 +196,14 @@ class SearchEngine:
         Returns:
             List of entries with translations (lemmas only)
         """
-        if self.embeddings is None or self.model is None:
+        if self.embeddings is None:
             return []
 
-        # Add E5 query prefix for asymmetric search
+        # Add query prefix
         query_text = f"{QUERY_PREFIX}{query}"
 
-        # Encode query
-        query_embedding = self.model.encode(query_text, convert_to_numpy=True)
+        # Encode query via local embedding server
+        query_embedding = self._get_query_embedding(query_text)
 
         # Compute cosine similarities
         similarities = self._cosine_similarity(query_embedding, self.embeddings)
@@ -259,6 +313,38 @@ class SearchEngine:
                             if result not in results:
                                 results.append(result)
 
+            # Levenshtein distance fallback on normalized words
+            if not results:
+                word_norm = word_normalized
+                candidates = []
+                for lemma, entry in self.word_to_entry.items():
+                    lemma_norm = self._normalize_macrons(lemma)
+                    dist = self._levenshtein_distance(word_norm, lemma_norm)
+                    if dist <= 2:
+                        score = self._fuzzy_score(word_norm, lemma_norm, dist)
+                        candidates.append((score, dist, lemma, entry))
+
+                # Sort by fuzzy score first, then use reranker on top candidates
+                candidates.sort(key=lambda x: (-x[0], x[1]))
+                top_candidates = candidates[:10]
+
+                if self.reranker_available:
+                    # Use reranker to get better ordering
+                    formatted = [
+                        self._format_lookup_result(e, matched_form=word_lower)
+                        for _, _, _, e in top_candidates
+                    ]
+                    reranked = self._rerank_candidates(word_lower, formatted, top_k=5)
+                    results.extend(reranked)
+                else:
+                    # Fallback to fuzzy score
+                    for score, dist, lemma, entry in top_candidates[:5]:
+                        result = self._format_lookup_result(
+                            entry, matched_form=word_lower
+                        )
+                        if result not in results:
+                            results.append(result)
+
         return results
 
     def _normalize_macrons(self, word: str) -> str:
@@ -270,6 +356,76 @@ class SearchEngine:
             .replace("ō", "o")
             .replace("ū", "u")
         )
+
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """Calculate Levenshtein distance between two strings."""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+        if len(s2) == 0:
+            return len(s1)
+        prev_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            curr_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = prev_row[j + 1] + 1
+                deletions = curr_row[j] + 1
+                substitutions = prev_row[j] + (c1 != c2)
+                curr_row.append(min(insertions, deletions, substitutions))
+            prev_row = curr_row
+        return prev_row[-1]
+
+    def _fuzzy_score(self, query: str, candidate: str, lev_dist: int) -> float:
+        """Calculate a fuzzy match score based on multiple factors.
+
+        Higher score = better match.
+        """
+        score = 0.0
+
+        # Base score from Levenshtein (lower distance = higher score)
+        score += 10 - lev_dist * 3
+
+        # Prefix match bonus (first 3-4 chars same)
+        for prefix_len in [3, 4]:
+            if len(query) >= prefix_len and len(candidate) >= prefix_len:
+                if query[:prefix_len] == candidate[:prefix_len]:
+                    score += prefix_len * 2
+                    break
+
+        # Length similarity bonus (similar length is better)
+        len_diff = abs(len(query) - len(candidate))
+        score += max(0, 5 - len_diff)
+
+        # Substring bonus (one contains the other as substring)
+        if query in candidate:
+            score += len(query) * 2
+        elif candidate in query:
+            score += len(candidate) * 2
+
+        # Common prefix length (longer common prefix = better)
+        common_prefix_len = 0
+        for i in range(min(len(query), len(candidate))):
+            if query[i] == candidate[i]:
+                common_prefix_len += 1
+            else:
+                break
+        score += common_prefix_len * 0.5
+
+        # Ending match bonus
+        for suffix_len in [2, 3]:
+            if (
+                query.endswith(candidate[-suffix_len:])
+                if len(candidate) >= suffix_len
+                else False
+            ):
+                score += suffix_len
+            if (
+                candidate.endswith(query[-suffix_len:])
+                if len(query) >= suffix_len
+                else False
+            ):
+                score += suffix_len
+
+        return score
 
     def _find_json_paths(
         self, obj, target: str, path: List[str] = []
@@ -297,8 +453,8 @@ class SearchEngine:
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
-        If matched_form differs from the lemma, only return the paths
-        where the form was found, not the entire paradigm.
+        Lookup returns only: word, translations, gender, matched_form/paths (if inflected).
+        Full forms/tables are only returned by get_word_forms().
         """
         translations = entry.get("translations", {})
         de_trans = translations.get("miks", [])
@@ -312,13 +468,12 @@ class SearchEngine:
         if entry.get("gender"):
             result["gender"] = entry["gender"]
 
-        if entry.get("forms"):
-            result["forms"] = entry["forms"]
-
         if matched_form and matched_form != entry.get("word", "").lower():
             paths = self._find_json_paths(entry.get("forms", {}), matched_form)
             if paths:
                 result["matched_form"] = matched_form
                 result["matched_paths"] = ["/".join(p) for p in paths]
+
+        return result
 
         return result
