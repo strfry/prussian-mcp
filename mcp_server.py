@@ -159,7 +159,8 @@ async def _stream_completions(
 @mcp.custom_route("/api/completions", methods=["POST"])
 async def completions_endpoint(request):
     """
-    Streaming LLM proxy endpoint.
+    DEPRECATED: Use /v1/chat/completions instead.
+    Legacy streaming LLM proxy endpoint with custom SSE format.
 
     Request JSON:
         - messages: Chat messages array (list)
@@ -197,6 +198,211 @@ async def completions_endpoint(request):
             f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n",
             media_type="text/event-stream",
             status_code=500,
+        )
+
+
+async def _stream_openai_format(
+    messages: list,
+    tools: list | None = None,
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+    language: str = "de",
+    model_name: str = "prussian-chat",
+) -> AsyncIterator[bytes]:
+    """Stream completions in OpenAI-compatible format."""
+    import time
+    import uuid
+
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created = int(time.time())
+
+    # Format system prompt with language
+    system_content = _format_system_prompt(language)
+
+    # Build full messages array
+    full_messages = [{"role": "system", "content": system_content}]
+    full_messages.extend(messages)
+
+    try:
+        # Make streaming request
+        stream = llm_client.chat.completions.create(
+            model=llm_model,
+            messages=full_messages,
+            tools=tools,
+            tool_choice="auto" if tools else None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        tool_calls_buffer: dict[int, dict] = {}
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+
+            # Build delta object for OpenAI format
+            delta_obj = {}
+
+            # Handle reasoning content (DeepSeek R1 style)
+            if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                delta_obj["reasoning_content"] = delta.reasoning_content
+
+            # Handle content
+            if delta.content:
+                delta_obj["content"] = delta.content
+
+            # Handle tool calls
+            if delta.tool_calls:
+                delta_obj["tool_calls"] = []
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_buffer:
+                        tool_calls_buffer[idx] = {
+                            "id": "",
+                            "type": "function",
+                            "function": {"name": "", "arguments": ""},
+                        }
+
+                    if tc.id:
+                        tool_calls_buffer[idx]["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            tool_calls_buffer[idx]["function"]["name"] = tc.function.name
+                        if tc.function.arguments:
+                            tool_calls_buffer[idx]["function"]["arguments"] += tc.function.arguments
+
+                    delta_obj["tool_calls"].append(tool_calls_buffer[idx])
+
+            # Only send chunk if we have delta content
+            if delta_obj or finish_reason:
+                chunk_data = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model_name,
+                    "choices": [{
+                        "index": 0,
+                        "delta": delta_obj,
+                        "finish_reason": finish_reason
+                    }]
+                }
+                yield f"data: {json.dumps(chunk_data)}\n\n".encode()
+
+    except Exception as e:
+        error_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model_name,
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "error",
+                "error": str(e)
+            }]
+        }
+        yield f"data: {json.dumps(error_chunk)}\n\n".encode()
+
+    # Send done marker
+    yield b"data: [DONE]\n\n"
+
+
+@mcp.custom_route("/v1/chat/completions", methods=["POST"])
+async def openai_completions_endpoint(request):
+    """
+    OpenAI-compatible streaming chat completions endpoint.
+
+    Request JSON:
+        - model: Model name (string, informational only)
+        - messages: Chat messages array (list)
+        - tools: Tool definitions in OpenAI format (list, optional)
+        - temperature: Sampling temperature (float, default 0.7)
+        - max_tokens: Maximum tokens (int, default 2000)
+        - stream: Enable streaming (bool, default true)
+        - language: Response language 'de' or 'lt' (str, default 'de', custom param)
+
+    Response: SSE stream in OpenAI format:
+        data: {"id": "chatcmpl-...", "object": "chat.completion.chunk",
+               "created": timestamp, "model": "...",
+               "choices": [{"index": 0, "delta": {...}, "finish_reason": null}]}
+        data: [DONE]
+    """
+    try:
+        data = await request.json()
+        messages = data.get("messages", [])
+        tools = data.get("tools", TOOLS)
+        temperature = float(data.get("temperature", 0.7))
+        max_tokens = int(data.get("max_tokens", 2000))
+        language = data.get("language", "de")
+        model = data.get("model", "prussian-chat")
+        stream = data.get("stream", True)
+
+        if stream:
+            return StreamingResponse(
+                _stream_openai_format(messages, tools, temperature, max_tokens, language, model),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        else:
+            # Non-streaming mode: collect all chunks and return as single response
+            import time
+            import uuid
+
+            completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+            created = int(time.time())
+
+            system_content = _format_system_prompt(language)
+            full_messages = [{"role": "system", "content": system_content}]
+            full_messages.extend(messages)
+
+            response = llm_client.chat.completions.create(
+                model=llm_model,
+                messages=full_messages,
+                tools=tools,
+                tool_choice="auto" if tools else None,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=False,
+            )
+
+            # Convert to OpenAI format
+            completion_data = {
+                "id": completion_id,
+                "object": "chat.completion",
+                "created": created,
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": response.choices[0].message.content,
+                        "tool_calls": response.choices[0].message.tool_calls or []
+                    },
+                    "finish_reason": response.choices[0].finish_reason
+                }],
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            }
+
+            return Response(
+                json.dumps(completion_data),
+                media_type="application/json",
+                status_code=200
+            )
+
+    except Exception as e:
+        return Response(
+            json.dumps({"error": str(e)}),
+            media_type="application/json",
+            status_code=500
         )
 
 
