@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "prussian-dictionary": {
-      "command": "python",
+      "command": "venv/bin/python",
       "args": ["mcp_server.py"],
       "cwd": "/home/strfry/projekte/prussian-mcp"
     }
