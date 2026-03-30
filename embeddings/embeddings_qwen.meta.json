@@ -1,0 +1,7 @@
+{
+  "model": "Qwen3-Embedding-0.6B-int8-ov",
+  "strategy": "translations_only",
+  "num_entries": 9702,
+  "embedding_dim": 1024,
+  "server": "http://localhost:8001/v3"
+}
