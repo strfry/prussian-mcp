@@ -17,6 +17,7 @@ from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
     OPENAI_MODEL,
+    PROMPTS_DIR,
     SYSTEM_PROMPT_PATH,
 )
 from prussian_engine.tools import TOOLS
@@ -50,11 +51,15 @@ llm_client = OpenAI(api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL)
 llm_model = OPENAI_MODEL
 
 
-# Load system prompt
-def _load_system_prompt() -> str:
-    """Load system prompt from file."""
-    if SYSTEM_PROMPT_PATH.exists():
-        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
+# Load prompts from disk (hot-reload on every call)
+PLAN_PROMPT_PATH = PROMPTS_DIR / "plan_prompt.txt"
+FINAL_PROMPT_PATH = PROMPTS_DIR / "final_prompt.txt"
+
+
+def _load_prompt(path: Path) -> str:
+    """Load a prompt from file."""
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
             return f.read().strip()
     return "You are an assistant."
 
@@ -74,13 +79,29 @@ def _build_tool_descriptions() -> str:
     return "\n".join(lines)
 
 
+def _render_prompt(path: Path, language: str = "de") -> str:
+    """Load prompt, substitute {lang_code} and {tools}."""
+    lang_code = "LT" if language == "lt" else "DE"
+    content = _load_prompt(path).replace("{lang_code}", lang_code)
+    return content.replace("{tools}", _build_tool_descriptions())
+
+
 @mcp.prompt()
 def chat(language: str = "de") -> str:
-    """System prompt for Prussian chatbot with ReAct-style tool calling."""
-    lang_code = "LT" if language == "lt" else "DE"
-    content = _load_system_prompt().replace("{lang_code}", lang_code)
-    content = content.replace("{tools}", _build_tool_descriptions())
-    return content
+    """System prompt for Prussian chatbot — understands user input via tool calls."""
+    return _render_prompt(SYSTEM_PROMPT_PATH, language)
+
+
+@mcp.prompt()
+def plan(language: str = "de") -> str:
+    """Planning prompt — responds in German and searches translations for each word."""
+    return _render_prompt(PLAN_PROMPT_PATH, language)
+
+
+@mcp.prompt()
+def final(language: str = "de") -> str:
+    """Final prompt — formulates the Prussian response from compacted results."""
+    return _render_prompt(FINAL_PROMPT_PATH, language)
 
 
 # ── Streaming LLM Proxy ──────────────────────────────────────────────────────
@@ -89,7 +110,7 @@ def chat(language: str = "de") -> str:
 def _format_system_prompt(language: str = "de") -> str:
     """Format system prompt with language code."""
     lang_code = "LT" if language == "lt" else "DE"
-    content = _load_system_prompt().replace("{lang_code}", lang_code)
+    content = _load_prompt(SYSTEM_PROMPT_PATH).replace("{lang_code}", lang_code)
     return content.replace("{tools}", _build_tool_descriptions())
 
 
