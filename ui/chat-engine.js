@@ -175,19 +175,17 @@ class ChatEngine {
     }
 
     /**
-     * Stream completion from LLM proxy (OpenAI-compatible format)
+     * Stream completion from LLM proxy (custom SSE format)
      */
     async _streamCompletion(messages, tools, language) {
-        const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${this.baseUrl}/api/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'prussian-chat',
                 messages,
                 tools,
                 temperature: 0.7,
                 max_tokens: 2000,
-                stream: true,
                 language
             })
         });
@@ -209,40 +207,21 @@ class ChatEngine {
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
+            let currentEvent = null;
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
+                if (line.startsWith('event: ')) {
+                    currentEvent = line.slice(7).trim();
+                } else if (line.startsWith('data: ') && currentEvent) {
                     const dataStr = line.slice(6).trim();
-                    if (dataStr === '[DONE]') {
-                        break;
-                    }
-                    if (dataStr) {
-                        try {
-                            const chunk = JSON.parse(dataStr);
-                            const delta = chunk.choices?.[0]?.delta;
+                    if (!dataStr) continue;
 
-                            if (delta?.content) {
-                                events.push({ type: 'content_delta', data: { content: delta.content } });
-                            }
-                            if (delta?.reasoning_content) {
-                                events.push({ type: 'reasoning_delta', data: { content: delta.reasoning_content } });
-                            }
-                            if (delta?.tool_calls) {
-                                for (const tc of delta.tool_calls) {
-                                    events.push({
-                                        type: 'tool_call_delta',
-                                        data: { index: tc.index, tool_call: tc }
-                                    });
-                                }
-                            }
-
-                            const finishReason = chunk.choices?.[0]?.finish_reason;
-                            if (finishReason) {
-                                events.push({ type: 'done', data: { finish_reason: finishReason } });
-                            }
-                        } catch (e) {
-                            console.error('[ChatEngine] Failed to parse OpenAI chunk:', dataStr);
-                        }
+                    try {
+                        const data = JSON.parse(dataStr);
+                        events.push({ type: currentEvent, data });
+                    } catch (e) {
+                        console.error('[ChatEngine] Failed to parse SSE data:', dataStr);
                     }
+                    currentEvent = null;
                 }
             }
         }

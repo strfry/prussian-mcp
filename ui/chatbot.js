@@ -1,17 +1,16 @@
 /**
- * Prussian Dictionary Chatbot - UI Layer
- * Handles DOM manipulation, events, and display
+ * Prussian Dictionary Chatbot - UI Layer with MCP Architecture
+ * Handles DOM manipulation, events, display, and MCP orchestration
  */
-
-// ── Configuration ────────────────────────────────────────────────────────
-const API_CHAT_URL = "/prussian-api/chat";  // Chat endpoint
 
 let busy = false;
 let currentLang = "de";
 let debugMode = false;
-let conversationHistory = [];  // Client-side conversation history
+let conversationHistory = [];
+let mcpClient = null;
+let chatEngine = null;
+let currentStreamingContent = '';
 
-// ── Internationalization ─────────────────────────────────────────────────
 const i18n = {
   de: {
     "intro.line1": "Sprich mich an — auf Deutsch, Litauisch oder Englisch.",
@@ -20,7 +19,10 @@ const i18n = {
     "typing": "Suche im Wörterbuch…",
     "error.prefix": "⚠ ",
     "hits.label": "📖 {count} Wörterbucheinträge",
-    "translation.prefix": "🇩🇪"
+    "translation.prefix": "🇩🇪",
+    "connecting": "Verbinde mit Server…",
+    "connected": "Verbunden",
+    "disconnected": "Getrennt"
   },
   lt: {
     "intro.line1": "Pakalbėk su manimi – vokiečių, lietuvių arba anglų kalba.",
@@ -29,7 +31,10 @@ const i18n = {
     "typing": "Ieško žodyne…",
     "error.prefix": "⚠ ",
     "hits.label": "📖 {count} žodyno įrašai",
-    "translation.prefix": "🇱🇹"
+    "translation.prefix": "🇱🇹",
+    "connecting": "Jungiamasi prie serverio…",
+    "connected": "Prisijungta",
+    "disconnected": "Atsijungta"
   }
 };
 
@@ -59,7 +64,6 @@ function detectBrowserLanguage() {
   return "de";
 }
 
-// ── UI Elements & Helpers ────────────────────────────────────────────────
 const chat = document.getElementById("chat");
 const input = document.getElementById("input");
 const btn = document.getElementById("send");
@@ -68,6 +72,7 @@ const debugToggle = document.getElementById("debugToggle");
 const langIcon = document.getElementById("lang-icon");
 const langMenu = document.getElementById("lang-menu");
 const langButtons = langMenu.querySelectorAll("button");
+const statusEl = document.getElementById("status");
 
 function clearEmpty() {
   const e = chat.querySelector(".empty");
@@ -97,9 +102,7 @@ function addMsg(role, prussian, translation, words, debugInfo) {
         ${translation ? `<div class="translation">${t("translation.prefix")} ${translation}</div>` : ""}
       </div>`;
 
-    console.log(`  → Checking: Array.isArray(words)=${Array.isArray(words)}, words.length=${words?.length}`);
     if (Array.isArray(words) && words.length > 0) {
-      console.log(`  ✓ Creating tooltip for ${words.length} words`);
       const bubble = div.querySelector('.bubble');
       const hitsDiv = document.createElement('div');
       hitsDiv.className = 'dict-hits';
@@ -109,14 +112,9 @@ function addMsg(role, prussian, translation, words, debugInfo) {
       tooltip.className = 'tooltip';
       tooltip.textContent = words.join(', ');
       hitsDiv.appendChild(tooltip);
-
       bubble.appendChild(hitsDiv);
-      console.log(`  ✓ Tooltip appended to bubble`);
-    } else {
-      console.log(`  ✗ Skipping tooltip: words is not array or empty`);
     }
 
-    // Add debug panel if debug mode is enabled and debug info is provided
     if (debugMode && debugInfo) {
       const bubble = div.querySelector('.bubble');
       const debugPanel = createDebugPanel(debugInfo);
@@ -130,19 +128,69 @@ function addMsg(role, prussian, translation, words, debugInfo) {
   chat.scrollTop = chat.scrollHeight;
 }
 
+function addStreamingMsg() {
+  clearEmpty();
+  const div = document.createElement("div");
+  div.className = "msg bot";
+  div.id = "streaming-msg";
+  div.innerHTML = `<div class="avatar">🏺</div>
+    <div class="bubble">
+      <div id="streaming-content"></div>
+    </div>`;
+  chat.appendChild(div);
+  return div;
+}
+
+function updateStreamingMsg(delta) {
+  const contentEl = document.getElementById("streaming-content");
+  if (contentEl) {
+    contentEl.innerHTML = (currentStreamingContent + delta).replace(/\n/g, "<br>");
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+
+function finalizeStreamingMsg(prussian, translation, words, debugInfo) {
+  const streamingMsg = document.getElementById("streaming-msg");
+  if (streamingMsg) {
+    streamingMsg.innerHTML = `<div class="avatar">🏺</div>
+      <div class="bubble">
+        <div>${prussian.replace(/\n/g, "<br>")}</div>
+        ${translation ? `<div class="translation">${t("translation.prefix")} ${translation}</div>` : ""}
+      </div>`;
+
+    if (Array.isArray(words) && words.length > 0) {
+      const bubble = streamingMsg.querySelector('.bubble');
+      const hitsDiv = document.createElement('div');
+      hitsDiv.className = 'dict-hits';
+      hitsDiv.textContent = t("hits.label", { count: words.length });
+
+      const tooltip = document.createElement('span');
+      tooltip.className = 'tooltip';
+      tooltip.textContent = words.join(', ');
+      hitsDiv.appendChild(tooltip);
+      bubble.appendChild(hitsDiv);
+    }
+
+    if (debugMode && debugInfo) {
+      const bubble = streamingMsg.querySelector('.bubble');
+      const debugPanel = createDebugPanel(debugInfo);
+      bubble.appendChild(debugPanel);
+    }
+  }
+  currentStreamingContent = '';
+}
+
 function createDebugPanel(debugInfo) {
   const panel = document.createElement('div');
   panel.className = 'debug-panel';
 
   let html = '<details><summary>🔍 RAG Debug Info</summary>';
 
-  // Query
   html += `<div class="debug-section">
     <h4>User Query</h4>
     <div class="debug-query">"${debugInfo.query}"</div>
   </div>`;
 
-  // Reasoning Section (if present)
   if (debugInfo.reasoning && debugInfo.reasoning.length > 0) {
     html += `<div class="debug-section">
       <h4>🧠 DeepSeek R1 Reasoning (${debugInfo.reasoning.length} turn${debugInfo.reasoning.length > 1 ? 's' : ''})</h4>`;
@@ -162,7 +210,6 @@ function createDebugPanel(debugInfo) {
     html += '</div>';
   }
 
-  // Tool Calls
   if (debugInfo.toolCalls && debugInfo.toolCalls.length > 0) {
     html += `<div class="debug-section">
       <h4>Tool Calls (${debugInfo.toolCalls.length})</h4>`;
@@ -178,16 +225,13 @@ function createDebugPanel(debugInfo) {
     html += '</div>';
   }
 
-  // All Search Results
   if (debugInfo.results && debugInfo.results.length > 0) {
     html += `<div class="debug-section">
       <h4>All Dictionary Results (${debugInfo.results.length} total)</h4>`;
     debugInfo.results.slice(0, 10).forEach((r, i) => {
-      const translations = r.translations?.miks || r.translations?.engl || ['?'];
-      const scoreText = r.score ? r.score.toFixed(3) : '???';
+      const translations = r.de || r.en || ['?'];
       html += `<div class="debug-result">
-        <span class="debug-score">${scoreText}</span>
-        <strong>${r.word || '?'}</strong> — ${translations[0] || '?'}
+        <strong>${r.word || '?'}</strong> — ${Array.isArray(translations) ? translations[0] : translations}
       </div>`;
     });
     if (debugInfo.results.length > 10) {
@@ -198,19 +242,12 @@ function createDebugPanel(debugInfo) {
     html += '</div>';
   }
 
-  // Used Words
   if (debugInfo.usedWords && debugInfo.usedWords.length > 0) {
     html += `<div class="debug-section">
       <h4>Words Actually Used (${debugInfo.usedWords.length})</h4>
       <div>${debugInfo.usedWords.join(', ')}</div>
     </div>`;
   }
-
-  // System Prompt
-  html += `<div class="debug-section">
-    <h4>System Prompt</h4>
-    <div class="debug-system">${debugInfo.systemPrompt}</div>
-  </div>`;
 
   html += '</details>';
   panel.innerHTML = html;
@@ -247,8 +284,8 @@ function setUI(enabled) {
 
 function updateUI() {
   langIcon.textContent = getLangIcon(currentLang);
-  langButtons.forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.lang === currentLang);
+  langButtons.forEach(b => {
+    b.classList.toggle("active", b.dataset.lang === currentLang);
   });
   input.placeholder = t("input.placeholder");
 
@@ -257,44 +294,61 @@ function updateUI() {
   }
 }
 
-// ── Chat Functionality ──────────────────────────────────────────────────
+function updateStatus(status) {
+  if (statusEl) {
+    statusEl.textContent = status;
+    statusEl.className = status.includes("Verbinde") ? "status connecting" :
+                         status.includes("Verbunden") ? "status connected" : "status";
+  }
+}
+
 async function send() {
   const text = input.value.trim();
   if (!text || busy) return;
+  if (!mcpClient || !chatEngine) {
+    showError("MCP not connected");
+    return;
+  }
+
   busy = true;
   hideError();
   input.value = "";
   setUI(false);
 
   addMsg("user", text);
-  showTyping();
+  hideTyping();
+
+  const streamingMsg = addStreamingMsg();
 
   try {
-    // Single API call to backend with conversation history
-    const response = await fetch(API_CHAT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: text,
-        language: currentLang,  // 'de' or 'lt'
-        history: conversationHistory  // Send conversation history
-      })
+    const result = await chatEngine.sendMessage(text, currentLang, conversationHistory, {
+      onContentDelta: (delta, full) => {
+        currentStreamingContent = full;
+        updateStreamingMsg(delta);
+      },
+      onToolCall: (toolInfo) => {
+        console.log(`[UI] Tool call: ${toolInfo.name}`);
+      },
+      onToolResult: (result) => {
+        console.log(`[UI] Tool result:`, result);
+      },
+      onDone: () => {
+        hideTyping();
+      }
     });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${response.status}`);
-    }
+    finalizeStreamingMsg(result.prussian, result.translation, result.usedWords, result.debugInfo);
+    addMsg = (() => {})();
+    conversationHistory = [
+      ...conversationHistory,
+      { role: "user", content: text },
+      { role: "assistant", content: result.prussian + (result.translation ? `\n\n[${currentLang.toUpperCase()}: ${result.translation}]` : '') }
+    ];
 
-    const result = await response.json();
-
-    // Update conversation history with response
-    conversationHistory = result.history || [];
-
-    hideTyping();
-    addMsg("bot", result.prussian, result.translation, result.usedWords, result.debugInfo);
   } catch (e) {
-    hideTyping();
+    if (document.getElementById("streaming-msg")) {
+      document.getElementById("streaming-msg").remove();
+    }
     showError(e.message);
   }
 
@@ -303,7 +357,27 @@ async function send() {
   input.focus();
 }
 
-// ── Event Listeners ──────────────────────────────────────────────────────
+async function initMCP() {
+  updateStatus(t("connecting"));
+
+  try {
+    mcpClient = new MCPClient('');
+    await mcpClient.connect();
+
+    chatEngine = new ChatEngine(mcpClient);
+
+    updateStatus(t("connected"));
+    setUI(true);
+    input.focus();
+
+    console.log('[UI] MCP initialized successfully');
+  } catch (err) {
+    console.error('[UI] MCP init failed:', err);
+    updateStatus(t("disconnected"));
+    showError("Failed to connect to MCP server: " + err.message);
+  }
+}
+
 debugToggle.addEventListener("click", () => {
   debugMode = !debugMode;
   debugToggle.classList.toggle("active", debugMode);
@@ -334,8 +408,7 @@ input.addEventListener("input", () => {
   btn.disabled = !input.value.trim() || busy;
 });
 
-// ── Initialization ───────────────────────────────────────────────────────
 currentLang = detectBrowserLanguage();
 updateUI();
-setUI(true);
-input.focus();
+showTyping();
+initMCP();
