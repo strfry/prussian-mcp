@@ -23,13 +23,18 @@
     display: flex; justify-content: space-between; align-items: flex-start;
   }
   header h1 { font-size: 21px; letter-spacing: 1px; }
-  #lang-selector {
-    position: relative;
+  header .status {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.2);
+    font-family: sans-serif;
   }
-  #lang-icon {
-    font-size: 20px; cursor: pointer; user-select: none;
-    transition: opacity .2s;
-  }
+  header .status.connecting { background: rgba(255,165,0,0.3); }
+  header .status.connected { background: rgba(0,128,0,0.3); }
+  header .status.disconnected { background: rgba(255,0,0,0.3); }
+  #lang-selector { position: relative; }
+  #lang-icon { font-size: 20px; cursor: pointer; user-select: none; transition: opacity .2s; }
   #lang-icon:hover { opacity: .7; }
   #lang-menu {
     display: none; position: absolute; top: 28px; right: 0;
@@ -47,9 +52,7 @@
   }
   #lang-menu button:hover { background: rgba(255,255,255,.1); }
   #lang-menu button.active { background: #5a9; color: #2c1a06; font-weight: bold; }
-  #chat {
-    flex: 1; overflow-y: auto; padding: 16px 16px 8px;
-  }
+  #chat { flex: 1; overflow-y: auto; padding: 16px 16px 8px; }
   .empty {
     text-align: center; color: #9a7a50; margin-top: 80px;
     font-style: italic; line-height: 1.9; font-size: 15px;
@@ -79,29 +82,122 @@
     color: #666; font-size: 13px;
     font-family: sans-serif; font-style: italic;
   }
-  .dict-hits {
-    margin-top: 5px; font-size: 11px;
-    color: #bbb; font-family: sans-serif;
-    cursor: help; position: relative; user-select: none;
+  
+  /* RAG Steps - visible by default */
+  .rag-steps {
+    margin-top: 12px;
+    border: 1px solid #c9a065;
+    border-radius: 8px;
+    background: #fffdf5;
+    overflow: hidden;
   }
-  .dict-hits:hover { color: #999; }
-  .dict-hits .tooltip {
-    display: none; position: absolute; bottom: 100%; left: 0;
-    background: #2c1a06; color: #f5dfa0; padding: 8px 12px;
-    border-radius: 8px; font-size: 11.5px; line-height: 1.4;
-    box-shadow: 0 2px 12px rgba(0,0,0,.4); margin-bottom: 8px;
-    z-index: 10; max-width: 300px; white-space: normal;
-    pointer-events: none;
+  .rag-header {
+    background: linear-gradient(135deg, #6b3d11, #8b5d21);
+    color: #f5dfa0;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: sans-serif;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
-  .dict-hits:hover .tooltip,
-  .dict-hits:active .tooltip { display: block; }
-  .dict-hits .tooltip::after {
-    content: ''; position: absolute; top: 100%; left: 20px;
-    border: 6px solid transparent; border-top-color: #2c1a06;
+  .rag-header:hover { background: #5a3510; }
+  .rag-header .toggle { font-size: 10px; opacity: 0.7; }
+  .rag-content {
+    padding: 12px;
+    display: none;
   }
-  @media (max-width: 600px) {
-    .dict-hits .tooltip { max-width: 220px; font-size: 10.5px; }
+  .rag-content.expanded { display: block; }
+  .rag-turn {
+    margin-bottom: 12px;
+    border: 1px solid #e0d5c0;
+    border-radius: 6px;
+    overflow: hidden;
   }
+  .rag-turn:last-child { margin-bottom: 0; }
+  .rag-turn-header {
+    background: #f5ede0;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-family: sans-serif;
+    color: #6b3d11;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+  }
+  .rag-turn-content {
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    background: white;
+  }
+  .rag-tool-call {
+    margin: 6px 0;
+    padding: 8px;
+    background: #f0f7ff;
+    border-left: 3px solid #4a90d9;
+    border-radius: 4px;
+  }
+  .rag-tool-name {
+    font-weight: bold;
+    color: #4a90d9;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .rag-tool-args {
+    font-size: 11px;
+    color: #333;
+    background: #e8f0f8;
+    padding: 4px 8px;
+    border-radius: 3px;
+    word-break: break-all;
+  }
+  .rag-tool-result {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: #f0fff0;
+    border-left: 3px solid #5a9;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #2c1a06;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  .rag-tool-result .word-entry {
+    padding: 3px 0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .rag-tool-result .word-entry:last-child { border-bottom: none; }
+  .rag-tool-result .word-prussian {
+    font-weight: bold;
+    color: #6b3d11;
+  }
+  .rag-tool-result .word-german {
+    color: #666;
+    font-style: italic;
+  }
+  .rag-tool-result .empty-result {
+    color: #999;
+    font-style: italic;
+  }
+  .rag-final {
+    margin-top: 10px;
+    padding: 10px;
+    background: #fffef5;
+    border: 1px solid #c9a065;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .rag-final-label {
+    font-weight: bold;
+    color: #6b3d11;
+    font-size: 10px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  
   .typing {
     display: flex; align-items: center; gap: 10px;
     color: #9a7050; font-style: italic;
@@ -143,139 +239,19 @@
     transition: background .2s;
   }
   #input-row button:disabled { background: #a08060; cursor: not-allowed; }
-
-  /* Debug Panel */
-  .debug-toggle {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background: rgba(59, 36, 8, 0.9);
-    color: #f4e4c1;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    z-index: 1000;
-  }
-  .debug-toggle:hover { background: rgba(59, 36, 8, 1); }
-  .debug-toggle.active { background: #6b3d11; }
-
-  .debug-panel {
-    margin-top: 12px;
-    padding: 12px;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 8px;
-    font-size: 11px;
-    font-family: 'Courier New', monospace;
-    max-height: 400px;
-    overflow-y: auto;
-  }
-  .debug-panel details {
-    margin-bottom: 8px;
-  }
-  .debug-panel summary {
-    cursor: pointer;
-    font-weight: bold;
-    padding: 6px;
-    background: rgba(107, 61, 17, 0.1);
-    border-radius: 4px;
-    user-select: none;
-  }
-  .debug-panel summary:hover { background: rgba(107, 61, 17, 0.2); }
-  .debug-section {
-    margin: 8px 0 8px 16px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.5);
-    border-left: 3px solid #6b3d11;
-  }
-  .debug-section h4 {
-    margin: 0 0 6px 0;
-    color: #6b3d11;
-    font-size: 10px;
-    text-transform: uppercase;
-    font-weight: bold;
-  }
-  .debug-result {
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-  }
-  .debug-result:last-child { border-bottom: none; }
-  .debug-score {
-    display: inline-block;
-    padding: 2px 6px;
-    background: #6b3d11;
-    color: white;
-    border-radius: 3px;
-    font-size: 9px;
-    margin-right: 6px;
-    font-weight: bold;
-  }
-  .debug-query {
-    font-style: italic;
-    color: #6b3d11;
-    margin-bottom: 8px;
-    padding: 6px;
-    background: rgba(107, 61, 17, 0.05);
-    border-radius: 3px;
-  }
-  .debug-system {
-    white-space: pre-wrap;
-    font-size: 10px;
-    color: #555;
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.02);
-    border-radius: 3px;
-  }
-
-  /* Reasoning display styles */
-  .reasoning-turn {
-    margin: 8px 0;
-    padding: 8px;
-    background: rgba(107, 61, 17, 0.05);
-    border-radius: 4px;
-    border-left: 3px solid #5a9;
-  }
-
-  .reasoning-turn summary {
-    cursor: pointer;
-    padding: 4px;
-    font-size: 10px;
-    color: #5a9;
-    user-select: none;
-  }
-
-  .reasoning-turn summary:hover {
-    background: rgba(90, 169, 90, 0.1);
-  }
-
-  .reasoning-content {
-    margin-top: 8px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 3px;
-    font-size: 10px;
-    line-height: 1.5;
-    color: #333;
-    white-space: pre-wrap;
-    max-height: 300px;
-    overflow-y: auto;
-    font-family: 'Courier New', monospace;
-  }
 </style>
 </head>
 <body>
-<button class="debug-toggle" id="debugToggle">🔍 Debug</button>
 
 <div id="app">
   <header>
     <div>
       <h1>🏛 Kunstisks Intellekts</h1>
     </div>
-    <div id="lang-selector">
-      <div id="lang-icon">🇩🇪</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span id="status" class="status connecting">Verbinde…</span>
+      <div id="lang-selector">
+        <div id="lang-icon">🇩🇪</div>
       <div id="lang-menu">
         <button data-lang="de">🇩🇪 Deutsch</button>
         <button data-lang="lt">🇱🇹 Lietuvių</button>
@@ -284,12 +260,385 @@
   </header>
   <div id="chat"></div>
   <div id="error" style="display:none;margin:0 16px"></div>
+  <div id="rag-container"></div>
   <div id="input-row">
     <input id="input" type="text" disabled>
     <button id="send" disabled>➤</button>
   </div>
 </div>
 
-<script src="chatbot.js"></script>
+<script src="mcp-client.js"></script>
+<script src="../lib/react-engine.js"></script>
+<script>
+let busy = false;
+let currentLang = "de";
+let conversationHistory = [];
+let mcpClient = null;
+let reactEngine = null;
+let currentRagContainer = null;
+let ragTurns = [];
+
+const i18n = {
+  de: {
+    "intro.line1": "Sprich mich an — auf Deutsch, Litauisch oder Englisch.",
+    "intro.line2": "Ich antworte auf Altpreußisch, mit deutscher Übersetzung.",
+    "input.placeholder": "Schreib etwas auf Deutsch oder Englisch…",
+    "typing": "Suche im Wörterbuch…",
+    "error.prefix": "⚠ ",
+    "rag.title": "📖 RAG Schritte",
+    "rag.turn": "Schritt",
+    "rag.final": "Finale Antwort",
+    "rag.tool": "Tool Aufruf",
+    "rag.result": "Ergebnis",
+    "rag.empty": "Kein Ergebnis",
+    "connecting": "Verbinde mit Server…",
+    "connected": "Verbunden",
+    "disconnected": "Getrennt"
+  },
+  lt: {
+    "intro.line1": "Pakalbėk su manimi – vokiečių, lietuvių arba anglų kalba.",
+    "intro.line2": "Aš atsakau senovės prūsų kalba su lietuvių vertimu.",
+    "input.placeholder": "Parašyk ką nors vokiečių arba anglų kalba…",
+    "typing": "Ieško žodyne…",
+    "error.prefix": "⚠ ",
+    "rag.title": "📖 RAG žingsniai",
+    "rag.turn": "Žingsnis",
+    "rag.final": "Galutinis atsakymas",
+    "rag.tool": "Įrankio kvietimas",
+    "rag.result": "Rezultatas",
+    "rag.empty": "Nėra rezultato",
+    "connecting": "Jungiamasi prie serverio…",
+    "connected": "Prisijungta",
+    "disconnected": "Atsijungta"
+  }
+};
+
+function t(key) {
+  return i18n[currentLang]?.[key] || i18n["de"]?.[key] || key;
+}
+
+function getLangIcon(lang) {
+  return lang === "lt" ? "🇱🇹" : "🇩🇪";
+}
+
+function detectBrowserLanguage() {
+  const stored = localStorage.getItem("preusDictLang");
+  if (stored) return stored;
+  const acceptLang = navigator.language || navigator.userLanguage || "";
+  if (acceptLang.toLowerCase().startsWith("lt")) return "lt";
+  if (acceptLang.toLowerCase().startsWith("de")) return "de";
+  return "de";
+}
+
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+const btn = document.getElementById("send");
+const errEl = document.getElementById("error");
+const langIcon = document.getElementById("lang-icon");
+const langMenu = document.getElementById("lang-menu");
+const langButtons = langMenu.querySelectorAll("button");
+const statusEl = document.getElementById("status");
+const ragContainer = document.getElementById("rag-container");
+
+function clearEmpty() {
+  const e = chat.querySelector(".empty");
+  if (e) e.remove();
+}
+
+function showIntro() {
+  clearEmpty();
+  const intro = document.createElement("div");
+  intro.className = "empty";
+  intro.innerHTML = `<div class="icon">⚡</div>
+    ${t("intro.line1")}<br>
+    <span style="font-size:13px">${t("intro.line2")}</span>`;
+  chat.appendChild(intro);
+}
+
+function addMsg(role, prussian, translation) {
+  clearEmpty();
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "user" ? "user" : "bot");
+
+  if (role === "bot") {
+    div.innerHTML = `<div class="avatar">🏺</div>
+      <div class="bubble">
+        <div>${prussian.replace(/\n/g, "<br>")}</div>
+        ${translation ? `<div class="translation">${t("translation.prefix") || '🇩🇪'} ${translation}</div>` : ""}
+      </div>`;
+  } else {
+    div.innerHTML = `<div class="bubble">${prussian}</div>`;
+  }
+
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function initRagContainer() {
+  ragContainer.innerHTML = '';
+  ragTurns = [];
+  
+  currentRagContainer = document.createElement('div');
+  currentRagContainer.className = 'rag-steps';
+  currentRagContainer.innerHTML = `
+    <div class="rag-header" onclick="toggleRagContent()">
+      <span>${t("rag.title")}</span>
+      <span class="toggle">▼</span>
+    </div>
+    <div class="rag-content expanded" id="rag-content"></div>
+  `;
+  ragContainer.appendChild(currentRagContainer);
+}
+
+function toggleRagContent() {
+  const content = document.getElementById('rag-content');
+  const toggle = currentRagContainer.querySelector('.toggle');
+  content.classList.toggle('expanded');
+  toggle.textContent = content.classList.contains('expanded') ? '▼' : '▶';
+}
+
+function addRagTurn(turnNum, toolCalls, content) {
+  if (!currentRagContainer) return;
+  
+  const contentDiv = document.getElementById('rag-content');
+  const turnDiv = document.createElement('div');
+  turnDiv.className = 'rag-turn';
+  
+  let turnHtml = `
+    <div class="rag-turn-header">
+      <span>${t("rag.turn")} ${turnNum}</span>
+      ${toolCalls?.length ? `<span>${toolCalls.length} tool call${toolCalls.length > 1 ? 's' : ''}</span>` : '<span>finale Antwort</span>'}
+    </div>
+    <div class="rag-turn-content">
+  `;
+  
+  if (toolCalls?.length) {
+    for (const tc of toolCalls) {
+      const argsStr = tc.arguments ? JSON.stringify(tc.arguments, null, 2) : '{}';
+      turnHtml += `
+        <div class="rag-tool-call">
+          <div class="rag-tool-name">${tc.name}()</div>
+          <div class="rag-tool-args">${argsStr}</div>
+        </div>
+      `;
+    }
+  } else if (content) {
+    turnHtml += `<div style="white-space:pre-wrap">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+  }
+  
+  turnHtml += '</div>';
+  turnDiv.innerHTML = turnHtml;
+  contentDiv.appendChild(turnDiv);
+  contentDiv.scrollTop = contentDiv.scrollHeight;
+}
+
+function addRagToolResult(result) {
+  if (!currentRagContainer) return;
+  
+  const contentDiv = document.getElementById('rag-content');
+  const lastTurn = contentDiv.lastElementChild;
+  if (!lastTurn) return;
+  
+  const contentPart = lastTurn.querySelector('.rag-turn-content');
+  
+  const resultDiv = document.createElement('div');
+  resultDiv.className = 'rag-tool-result';
+  
+  if (Array.isArray(result) && result.length > 0) {
+    for (const entry of result.slice(0, 5)) {
+      const word = entry.word || '?';
+      const de = entry.de || '';
+      const en = entry.en || '';
+      resultDiv.innerHTML += `
+        <div class="word-entry">
+          <span class="word-prussian">${word}</span>
+          <span class="word-german">${de}${de && en ? ' | ' : ''}${en}</span>
+        </div>
+      `;
+    }
+    if (result.length > 5) {
+      resultDiv.innerHTML += `<div class="word-entry" style="color:#999;font-style:italic">...und ${result.length - 5} mehr</div>`;
+    }
+  } else if (Array.isArray(result) && result.length === 0) {
+    resultDiv.innerHTML = `<span class="empty-result">${t("rag.empty")}</span>`;
+  } else if (typeof result === 'object') {
+    resultDiv.innerHTML = `<pre style="white-space:pre-wrap;font-size:10px">${JSON.stringify(result, null, 2).slice(0, 500)}</pre>`;
+  } else {
+    resultDiv.innerHTML = String(result).slice(0, 200);
+  }
+  
+  contentPart.appendChild(resultDiv);
+  contentDiv.scrollTop = contentDiv.scrollHeight;
+}
+
+function finalizeRagContainer(prussian, translation) {
+  if (!currentRagContainer) return;
+  
+  const contentDiv = document.getElementById('rag-content');
+  
+  const finalDiv = document.createElement('div');
+  finalDiv.className = 'rag-final';
+  finalDiv.innerHTML = `
+    <div class="rag-final-label">${t("rag.final")}</div>
+    <div>${prussian.replace(/\n/g, '<br>')}</div>
+    ${translation ? `<div style="margin-top:6px;color:#666;font-style:italic">${translation}</div>` : ''}
+  `;
+  contentDiv.appendChild(finalDiv);
+}
+
+function showTyping() {
+  const d = document.createElement("div");
+  d.className = "typing";
+  d.id = "typing";
+  d.innerHTML = `<span>🏺</span><span>${t("typing")}</span>
+    <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function hideTyping() {
+  document.getElementById("typing")?.remove();
+}
+
+function showError(msg) {
+  errEl.textContent = t("error.prefix") + msg;
+  errEl.style.display = "block";
+}
+
+function hideError() {
+  errEl.style.display = "none";
+}
+
+function setUI(enabled) {
+  input.disabled = !enabled;
+  btn.disabled = !enabled || !input.value.trim();
+}
+
+function updateUI() {
+  langIcon.textContent = getLangIcon(currentLang);
+  langButtons.forEach(b => {
+    b.classList.toggle("active", b.dataset.lang === currentLang);
+  });
+  input.placeholder = t("input.placeholder");
+
+  if (!chat.querySelector(".msg")) {
+    showIntro();
+  }
+}
+
+function updateStatus(status) {
+  if (statusEl) {
+    statusEl.textContent = status;
+    statusEl.className = status.includes("Verbinde") ? "status connecting" :
+                         status.includes("Verbunden") ? "status connected" : "status";
+  }
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || busy) return;
+  if (!mcpClient || !reactEngine) {
+    showError("MCP not connected");
+    return;
+  }
+
+  busy = true;
+  hideError();
+  input.value = "";
+  setUI(false);
+
+  addMsg("user", text);
+  hideTyping();
+  ragContainer.innerHTML = '';
+  initRagContainer();
+
+  try {
+    const result = await reactEngine.sendMessage(text, currentLang, conversationHistory, {
+      onTurnStart: ({ turn, message }) => {
+        addRagTurn(turn, null, null);
+      },
+      onTurnEnd: ({ turn, content, toolCalls }) => {
+        // Update turn header with tool calls if present
+      },
+      onToolCall: ({ name, arguments: args }) => {
+        // Tool call already added in onTurnStart
+      },
+      onToolResult: ({ result }) => {
+        addRagToolResult(result);
+      },
+      onContentDelta: () => {},
+      onDone: () => {}
+    });
+
+    finalizeRagContainer(result.prussian, result.translation);
+    
+    addMsg("bot", result.prussian, result.translation);
+    
+    conversationHistory = [
+      ...conversationHistory,
+      { role: "user", content: text },
+      { role: "assistant", content: result.prussian + (result.translation ? `\n\n[${currentLang.toUpperCase()}: ${result.translation}]` : '') }
+    ];
+
+  } catch (e) {
+    ragContainer.innerHTML = '';
+    showError(e.message);
+  }
+
+  busy = false;
+  setUI(true);
+  input.focus();
+}
+
+async function initMCP() {
+  updateStatus(t("connecting"));
+
+  try {
+    mcpClient = new MCPClient('');
+    await mcpClient.connect();
+
+    reactEngine = new ReactEngine(mcpClient, 'http://localhost:8001/v3', 'eurollm-9b-instruct-int8');
+
+    updateStatus(t("connected"));
+    setUI(true);
+    input.focus();
+
+    console.log('[UI] MCP initialized successfully');
+  } catch (err) {
+    console.error('[UI] MCP init failed:', err);
+    updateStatus(t("disconnected"));
+    showError("Failed to connect to MCP server: " + err.message);
+  }
+}
+
+langIcon.addEventListener("click", () => {
+  langMenu.classList.toggle("open");
+});
+
+langButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const newLang = btn.dataset.lang;
+    if (newLang !== currentLang) {
+      currentLang = newLang;
+      localStorage.setItem("preusDictLang", newLang);
+      updateUI();
+    }
+    langMenu.classList.remove("open");
+  });
+});
+
+btn.addEventListener("click", send);
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) send();
+});
+input.addEventListener("input", () => {
+  btn.disabled = !input.value.trim() || busy;
+});
+
+currentLang = detectBrowserLanguage();
+updateUI();
+showTyping();
+initMCP();
+</script>
 </body>
 </html>
