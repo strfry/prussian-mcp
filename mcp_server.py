@@ -59,7 +59,28 @@ def _load_system_prompt() -> str:
     return "You are an assistant."
 
 
-system_prompt_template = _load_system_prompt()
+def _build_tool_descriptions() -> str:
+    """Build human-readable tool descriptions from TOOLS definitions."""
+    lines = []
+    for t in TOOLS:
+        fn = t["function"]
+        params = ", ".join(
+            f"{name}: {schema.get('type', 'any')}"
+            + (f" = {json.dumps(schema['default'])}" if "default" in schema else "")
+            for name, schema in fn["parameters"].get("properties", {}).items()
+        )
+        desc = " ".join(fn["description"].split())
+        lines.append(f"- {fn['name']}({params}): {desc}")
+    return "\n".join(lines)
+
+
+@mcp.prompt()
+def chat(language: str = "de") -> str:
+    """System prompt for Prussian chatbot with ReAct-style tool calling."""
+    lang_code = "LT" if language == "lt" else "DE"
+    content = _load_system_prompt().replace("{lang_code}", lang_code)
+    content = content.replace("{tools}", _build_tool_descriptions())
+    return content
 
 
 # ── Streaming LLM Proxy ──────────────────────────────────────────────────────
@@ -68,7 +89,8 @@ system_prompt_template = _load_system_prompt()
 def _format_system_prompt(language: str = "de") -> str:
     """Format system prompt with language code."""
     lang_code = "LT" if language == "lt" else "DE"
-    return system_prompt_template.replace("{lang_code}", lang_code)
+    content = _load_system_prompt().replace("{lang_code}", lang_code)
+    return content.replace("{tools}", _build_tool_descriptions())
 
 
 def _build_llm_kwargs(
