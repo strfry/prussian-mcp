@@ -13,10 +13,41 @@ const { MCPClient } = await import('../ui/mcp-client.js');
 const MCP_URL  = process.argv[2] || 'http://localhost:8000';
 const LLM_URL  = process.argv[3] || 'http://localhost:8001/v3';
 const MESSAGE  = process.argv[4] || 'Wie sagt man "Haus" auf Preußisch?';
-const MODEL    = process.env.OPENAI_MODEL || 'eurollm-22b-instruct-int8';
+const MODEL    = process.env.OPENAI_MODEL || 'eurollm-22b-instruct-int4';
 
-async function fetchSystemPrompt(mcp, language = 'de') {
-    const result = await mcp.getPrompt('chat', { language });
+function compactToolResults(results) {
+    const lines = [];
+    for (const { name, args, result } of results) {
+        if (name === 'lookup_prussian_word') {
+            const r = result;
+            if (r.word) {
+                let line = `${args.word} → ${r.word} [${r.de}] (${r.en})`;
+                if (r.gender) line += ` {${r.gender}}`;
+                if (r.matched_form) line += ` matched: ${r.matched_form}`;
+                if (r.matched_paths) line += ` (${r.matched_paths.join(', ')})`;
+                lines.push(line);
+            } else if (Array.isArray(r)) {
+                for (const entry of r.slice(0, 5)) {
+                    lines.push(`${args.word} → ${entry.word} [${entry.de}] (${entry.en})`);
+                }
+            } else {
+                lines.push(`${args.word} → not found`);
+            }
+        } else if (name === 'search_dictionary') {
+            const entries = Array.isArray(result) ? result : [];
+            lines.push(`search "${args.query}":`);
+            for (const e of entries.slice(0, 5)) {
+                lines.push(`  ${e.word} [${e.de}] (${e.en})`);
+            }
+        } else if (name === 'get_word_forms') {
+            lines.push(`forms of ${args.lemma}: ${JSON.stringify(result)}`);
+        }
+    }
+    return lines.join('\n');
+}
+
+async function fetchSystemPrompt(mcp, name = 'chat', language = 'de') {
+    const result = await mcp.getPrompt(name, { language });
     // MCP returns messages with role "user"/"assistant", content as TextContent
     const msg = result.messages?.[0];
     if (!msg) throw new Error('No messages in prompt');
@@ -104,12 +135,13 @@ function parseToolCalls(text) {
         }
     }
     
-    // Fallback: find bare JSON tool call without <tool_call> tags
+    // Fallback: find all bare JSON tool calls without <tool_call> tags
     if (calls.length === 0) {
-        const bareJsonMatch = text.match(/\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*\})\s*\}/);
-        if (bareJsonMatch) {
+        const bareJsonRegex = /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*\})\s*\}/g;
+        let bareMatch;
+        while ((bareMatch = bareJsonRegex.exec(text)) !== null) {
             try {
-                calls.push({ name: bareJsonMatch[1], arguments: JSON.parse(bareJsonMatch[2]) });
+                calls.push({ name: bareMatch[1], arguments: JSON.parse(bareMatch[2]) });
             } catch {}
         }
     }
@@ -149,56 +181,135 @@ function parseFlexibleFormat(text) {
     return null;
 }
 
+/**
+ * Run a ReAct loop: send messages to LLM, parse tool calls, execute via MCP, repeat.
+ * Returns collected tool results.
+ */
+async function reactLoop(mcp, messages, label, maxTurns = 10) {
+    const collected = [];
+    const seen = new Set();
+    let dupStreak = 0;
+
+    for (let turn = 1; turn <= maxTurns; turn++) {
+        console.log(`\n--- ${label} turn ${turn} ---\n`);
+
+        const response = await streamChat(messages);
+        messages.push({ role: 'assistant', content: response });
+
+        const toolCalls = parseToolCalls(response);
+        if (toolCalls.length === 0) break;
+
+        let newResults = false;
+        for (const tc of toolCalls) {
+            const key = `${tc.name}:${JSON.stringify(tc.arguments)}`;
+            if (seen.has(key)) {
+                console.log(`\n  [skip duplicate] ${tc.name}(${JSON.stringify(tc.arguments)})`);
+                continue;
+            }
+            seen.add(key);
+            newResults = true;
+            console.log(`\n\n  [executing] ${tc.name}(${JSON.stringify(tc.arguments)})`);
+            try {
+                const result = await mcp.callTool(tc.name, tc.arguments);
+                collected.push({ name: tc.name, args: tc.arguments, result });
+                const resultStr = JSON.stringify(result, null, 2);
+                console.log(`  [result] ${resultStr.slice(0, 200)}...`);
+            } catch (err) {
+                collected.push({ name: tc.name, args: tc.arguments, result: `Error: ${err.message}` });
+            }
+        }
+
+        dupStreak = newResults ? 0 : dupStreak + 1;
+        if (dupStreak >= 2) {
+            console.log('\n  [stuck — ending loop]');
+            break;
+        }
+
+        // Re-compact all results so far as context for the next turn
+        messages.push({ role: 'user', content: `<context>\n${compactToolResults(collected)}\n</context>` });
+    }
+    return collected;
+}
+
 async function main() {
     console.log(`--- ReAct Tool-Calling Test ---`);
     console.log(`MCP:   ${MCP_URL}`);
     console.log(`LLM:   ${LLM_URL} (${MODEL})`);
     console.log(`Message: "${MESSAGE}"\n`);
 
-    // Connect MCP for tool execution and prompt, LLM calls go directly to OVMS
     const mcp = new MCPClient(MCP_URL);
     await mcp.connect();
 
-    // Fetch system prompt from MCP (includes tool descriptions and ReAct format)
-    const systemPrompt = await fetchSystemPrompt(mcp, 'de');
-    console.log(`System prompt (${systemPrompt.length} chars):\n${systemPrompt.slice(0, 200)}...\n`);
+    // Phase 1: Understand user input
+    const chatPrompt = await fetchSystemPrompt(mcp, 'chat', 'de');
+    console.log(`Chat prompt (${chatPrompt.length} chars)\n`);
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
+    const phase1Messages = [
+        { role: 'system', content: chatPrompt },
         { role: 'user', content: MESSAGE }
     ];
+    const phase1Results = await reactLoop(mcp, phase1Messages, 'Understand');
 
-    const MAX_TURNS = 10;
-    for (let turn = 1; turn <= MAX_TURNS; turn++) {
-        console.log(`\n--- Turn ${turn} ---\n`);
+    // Phase 2: Plan — single LLM call to get a German response
+    const planPrompt = await fetchSystemPrompt(mcp, 'plan', 'de');
+    const compacted1 = compactToolResults(phase1Results);
+    console.log(`\n=== Phase 2: Plan ===\n`);
 
-        const response = await streamChat(messages);
-        messages.push({ role: 'assistant', content: response });
+    // Translate input to user language from lookup results
+    const translated = phase1Results
+        .filter(r => r.name === 'lookup_prussian_word')
+        .map(r => {
+            const res = r.result;
+            if (Array.isArray(res)) return res[0]?.de || r.args.word;
+            return res.de || r.args.word;
+        });
 
-        // Check for tool calls
-        const toolCalls = parseToolCalls(response);
-        if (toolCalls.length === 0) {
-            console.log('\n\n[No tool calls - final answer]');
-            break;
-        }
+    const planMessages = [
+        { role: 'system', content: planPrompt },
+        { role: 'user', content: translated.join(' ') }
+    ];
+    const germanResponse = await streamChat(planMessages);
+    console.log(`\n\n[German response: "${germanResponse.trim()}"]\n`);
 
-        // Execute tool calls
-        let toolResults = '';
-        for (const tc of toolCalls) {
-            console.log(`\n\n  [executing] ${tc.name}(${JSON.stringify(tc.arguments)})`);
-            try {
-                const result = await mcp.callTool(tc.name, tc.arguments);
-                const resultStr = JSON.stringify(result, null, 2);
-                console.log(`  [result] ${resultStr.slice(0, 200)}...`);
-                toolResults += `<tool_result>\n${resultStr}\n</tool_result>\n`;
-            } catch (err) {
-                toolResults += `<tool_result>\nError: ${err.message}\n</tool_result>\n`;
+    // Phase 3: Search — extract content words and look them up
+    console.log(`\n=== Phase 3: Search ===\n`);
+    const stopwords = new Set(['der','die','das','ein','eine','und','oder','ist','sind','war','hat','ich','du','er','sie','es','wir','ihr','mein','dein','sein','nicht','auch','an','in','auf','mit','von','zu','für','als','nach','bei','aus','um','über','vor','zum','zur','den','dem','des','einen','einem','einer','dass','wenn','aber','so','wie','noch','schon','sehr','nur','doch','ja','nein','kein','keine','wird','kann','will','muss','soll','darf','sich','man','was','wer','wo','hier','da','nun','dann','mal','mehr','uns','euch']);
+    const words = germanResponse
+        .replace(/[.,!?;:"""()[\]{}]/g, ' ')
+        .split(/\s+/)
+        .map(w => w.toLowerCase())
+        .filter(w => w.length > 1 && !stopwords.has(w));
+    const uniqueWords = [...new Set(words)];
+    console.log(`Content words: ${uniqueWords.join(', ')}\n`);
+
+    const searchResults = [];
+    for (const word of uniqueWords) {
+        console.log(`  [search] "${word}"`);
+        try {
+            const result = await mcp.callTool('search_dictionary', { query: word, top_k: 3 });
+            searchResults.push({ name: 'search_dictionary', args: { query: word }, result });
+            const entries = Array.isArray(result) ? result : [];
+            for (const e of entries.slice(0, 3)) {
+                console.log(`    → ${e.word} [${e.de}]`);
             }
+        } catch (err) {
+            console.log(`    → Error: ${err.message}`);
         }
-
-        // Feed results back
-        messages.push({ role: 'user', content: toolResults });
     }
+
+    // Phase 4: Final formulation from all compacted results
+    const finalPrompt = await fetchSystemPrompt(mcp, 'final', 'de');
+    const allResults = [...phase1Results, ...searchResults];
+    const compactedAll = compactToolResults(allResults);
+    console.log(`\n=== Final answer (${allResults.length} total lookups) ===\n`);
+    console.log(`Context:\n${compactedAll}\n`);
+    console.log(`Plan: ${germanResponse.trim()}\n`);
+
+    const finalMessages = [
+        { role: 'system', content: finalPrompt },
+        { role: 'user', content: `${MESSAGE}\n\nGeplante Antwort: ${germanResponse.trim()}\n\n<context>\n${compactedAll}\n</context>` }
+    ];
+    await streamChat(finalMessages);
 
     mcp.disconnect();
     console.log('\nDone.');
