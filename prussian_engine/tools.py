@@ -34,7 +34,12 @@ TOOLS = [
                     "word": {
                         "type": "string",
                         "description": "Prussian word to look up (e.g., 'semmē', 'bēiti')",
-                    }
+                    },
+                    "fuzzy": {
+                        "type": "boolean",
+                        "description": "Enable fuzzy matching for approximate/misspelled words",
+                        "default": True,
+                    },
                 },
                 "required": ["word"],
             },

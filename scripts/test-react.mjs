@@ -13,56 +13,20 @@ const { MCPClient } = await import('../ui/mcp-client.js');
 const MCP_URL  = process.argv[2] || 'http://localhost:8000';
 const LLM_URL  = process.argv[3] || 'http://localhost:8001/v3';
 const MESSAGE  = process.argv[4] || 'Wie sagt man "Haus" auf Preußisch?';
-const MODEL    = process.env.OPENAI_MODEL || 'eurollm-9b-instruct-int8';
+const MODEL    = process.env.OPENAI_MODEL || 'eurollm-22b-instruct-int8';
 
-function buildToolDescriptions(tools) {
-    return tools.map(t => {
-        const fn = t.function;
-        const params = Object.entries(fn.parameters.properties || {})
-            .map(([name, schema]) => {
-                const def = schema.default !== undefined ? ` = ${JSON.stringify(schema.default)}` : '';
-                return `${name}: ${schema.type}${def}`;
-            }).join(', ');
-        const desc = fn.description.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        return `- ${fn.name}(${params}): ${desc}`;
-    }).join('\n');
+async function fetchSystemPrompt(mcp, language = 'de') {
+    const result = await mcp.getPrompt('chat', { language });
+    // MCP returns messages with role "user"/"assistant", content as TextContent
+    const msg = result.messages?.[0];
+    if (!msg) throw new Error('No messages in prompt');
+    // content can be a string or {type: "text", text: "..."}
+    const content = msg.content;
+    if (typeof content === 'string') return content;
+    if (content?.type === 'text') return content.text;
+    if (content?.text) return content.text;
+    throw new Error('Could not extract prompt text');
 }
-
-const REACT_INSTRUCTIONS = `You have access to the following tools to look up Prussian words:
-
-{tools}
-
-STRICT RULES:
-1. lookup_prussian_word: For Prussian words ONLY. Words like "minintun", "prusan" are SINGLE words with -un endings.
-2. search_dictionary: For German/English/Lithuanian/etc. ONE concept only.
-3. get_word_forms: For known Prussian lemmas.
-4. NEVER break words apart. "minintun" = ONE word. "prusan" = ONE word.
-5. OUTPUT ONLY ONE TOOL CALL. Wait for result.
-6. If word not found, move to the next unique word.
-7. MUST look up ALL words before summarizing. "As kwai minintun prusan" = 4 words: As, kwai, minintun, prusan.
-8. DO NOT summarize until you have looked up ALL unique words.
-9. DO NOT repeat a word you already looked up.
-
-EXACT output format - ONLY ONE tool call:
-<tool_call>
-{"name": "tool_name", "arguments": {"param": "value"}}
-</tool_call>
-
-Example - "As kwai minintun":
-→ Look up "As" (1 word)
-→ Look up "kwai" (1 word)
-→ Look up "minintun" (1 word, NOT "min" and "tun" separately!)
-→ STOP and summarize
-
-Example 1:
-User: "As kwai minintun"
-<tool_call>
-{"name": "lookup_prussian_word", "arguments": {"word": "As"}}
-</tool_call>
-
-After result: STOP tool calls and provide translation.
-
-`;
 
 async function streamChat(messages) {
     const response = await fetch(`${LLM_URL}/chat/completions`, {
@@ -140,8 +104,9 @@ function parseToolCalls(text) {
         }
     }
     
+    // Fallback: find bare JSON tool call without <tool_call> tags
     if (calls.length === 0) {
-        const bareJsonMatch = text.match(/^\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]+\})\s*\}\s*$/);
+        const bareJsonMatch = text.match(/\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*\})\s*\}/);
         if (bareJsonMatch) {
             try {
                 calls.push({ name: bareJsonMatch[1], arguments: JSON.parse(bareJsonMatch[2]) });
@@ -190,16 +155,16 @@ async function main() {
     console.log(`LLM:   ${LLM_URL} (${MODEL})`);
     console.log(`Message: "${MESSAGE}"\n`);
 
-    // Connect MCP for tool execution, LLM calls go directly to OVMS
+    // Connect MCP for tool execution and prompt, LLM calls go directly to OVMS
     const mcp = new MCPClient(MCP_URL);
     await mcp.connect();
-    const toolsText = buildToolDescriptions(mcp.getToolsOpenAIFormat());
-    console.log(`Tools:\n${toolsText}\n`);
 
-    // Build initial messages with ReAct instructions appended to system prompt
-    const reactInstructions = REACT_INSTRUCTIONS.replace('{tools}', toolsText);
+    // Fetch system prompt from MCP (includes tool descriptions and ReAct format)
+    const systemPrompt = await fetchSystemPrompt(mcp, 'de');
+    console.log(`System prompt (${systemPrompt.length} chars):\n${systemPrompt.slice(0, 200)}...\n`);
+
     const messages = [
-        { role: 'system', content: reactInstructions },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: MESSAGE }
     ];
 
