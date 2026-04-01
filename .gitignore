@@ -1,0 +1,29 @@
+node_modules
+package-lock.json
+
+venv
+.venv
+
+**/__pycache__
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Generated data
+corpus/synthetic/
+data/cache/
+data/*.json
+
+# Embeddings
+embeddings/
+
+# Environment
+.env
+*.env
+
+# Logs
+*.log
