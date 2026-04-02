@@ -290,8 +290,8 @@ class SearchEngine:
                     self._format_lookup_result(entry, matched_form=word_lower)
                 )
 
-        # If no exact match and fuzzy is enabled, try macron-normalized lookup
-        if not results and fuzzy:
+        # Macron-normalized lookup (always, not just fuzzy)
+        if not results:
             word_normalized = self._normalize_macrons(word_lower)
 
             # Find all lemmata that match when normalized
@@ -313,8 +313,8 @@ class SearchEngine:
                             if result not in results:
                                 results.append(result)
 
-            # Levenshtein distance fallback on normalized words
-            if not results:
+            # Levenshtein distance fallback on normalized words (fuzzy only)
+            if not results and fuzzy:
                 word_norm = word_normalized
                 candidates = []
                 for lemma, entry in self.word_to_entry.items():

@@ -21,6 +21,7 @@ from prussian_engine.config import (
     SYSTEM_PROMPT_PATH,
 )
 from prussian_engine.tools import TOOLS
+from prussian_engine.rerank_search import RerankedSearchEngine
 
 # Initialize FastMCP with security settings
 # Allow strfry.org for remote access via SSH tunnel
@@ -44,6 +45,7 @@ mcp = FastMCP(
 # Load search engine at startup (no chat_engine needed for MCP tools)
 print("Loading Prussian Dictionary search engine...")
 search_engine = prussian_engine.SearchEngine()
+reranked_engine = None
 print("Search engine loaded successfully!")
 
 # Initialize OpenAI client for streaming proxy
@@ -321,18 +323,48 @@ async def openai_completions_endpoint(request):
 
 
 @mcp.tool()
-def search_dictionary(query: str, top_k: int = 10) -> list[dict[str, Any]]:
+def search_dictionary(
+    query: str, top_k: int = 10, use_reranker: bool = False
+) -> list[dict[str, Any]]:
     """
-    Semantic search in the Prussian dictionary.
+    Semantic search in the Prussian dictionary with optional reranking.
 
     Args:
-        query: Search query in German or English
+        query: Search query in multiple languages (German, English, Lithuanian, Latvian, Polish, Russian)
         top_k: Number of results to return
+        use_reranker: Use reranker for better semantic ranking (slower but more accurate)
 
     Returns:
         List of dictionary entries with translations
     """
-    results = search_engine.query(query, top_k)
+    global reranked_engine
+
+    if use_reranker:
+        import asyncio
+
+        if reranked_engine is None:
+            reranked_engine = RerankedSearchEngine(use_reranker=True)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    reranked_engine.search(query, top_k=top_k, rerank_candidates=100),
+                )
+                results = future.result()
+        else:
+            results = asyncio.run(
+                reranked_engine.search(query, top_k=top_k, rerank_candidates=100)
+            )
+    else:
+        results = search_engine.query(query, top_k)
+
     return [{"word": r["word"], "de": r["de"], "en": r["en"]} for r in results]
 
 
@@ -395,6 +427,12 @@ if static_dir.exists():
         return FileResponse(
             static_dir / "chat-engine.js", media_type="application/javascript"
         )
+
+    @mcp.custom_route("/lib/react-engine.js", methods=["GET"])
+    async def serve_react_engine_js(request):
+        """Serve the ReAct engine JavaScript."""
+        lib_path = static_dir.parent / "lib" / "react-engine.js"
+        return FileResponse(lib_path, media_type="application/javascript")
 
     @mcp.custom_route("/images/{filename}", methods=["GET"])
     async def serve_images(request):

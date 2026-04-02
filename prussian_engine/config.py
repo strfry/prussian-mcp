@@ -12,7 +12,7 @@ EMBEDDINGS_DIR = PROJECT_ROOT / "embeddings"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 DICTIONARY_PATH = DATA_DIR / "prussian_dictionary.json"
-EMBEDDINGS_PATH = EMBEDDINGS_DIR / "embeddings_qwen"
+EMBEDDINGS_PATH = EMBEDDINGS_DIR / "embeddings_with_prussian"
 SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
 
 # LLM Configuration from environment
