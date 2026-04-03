@@ -1,11 +1,12 @@
 """Reranker-enhanced search combining embedding retrieval with semantic reranking."""
 
-import httpx
 import asyncio
 import re
 from typing import Dict, Any, List
 
 from .search import SearchEngine
+from .embedding_client import EmbeddingClient
+from .config import RERANK_API_KEY
 
 
 def get_word_type(entry: dict) -> str:
@@ -26,7 +27,6 @@ def format_entry_multilang(entry: dict) -> str:
     translations = entry.get("translations", {})
     trans_parts = []
 
-    # All 6 languages: EN, DE, LT, LV, PL, RU
     for lang_key in ["miks", "engl", "leit", "latt", "pols", "mask"]:
         trans = translations.get(lang_key, [])
         if trans and trans[0]:
@@ -35,16 +35,16 @@ def format_entry_multilang(entry: dict) -> str:
     return " | ".join(trans_parts) if trans_parts else ""
 
 
-RERANKER_URL = "http://localhost:8001/v3/rerank"
-RERANKER_MODEL = "BAAI/bge-reranker-large"
-
-
 class RerankedSearchEngine:
     """Two-stage search: embedding retrieval + reranking."""
 
     def __init__(self, use_reranker: bool = True):
         self.base_engine = SearchEngine()
         self.use_reranker = use_reranker
+        if RERANK_API_KEY:
+            self.rerank_client = EmbeddingClient()
+        else:
+            raise ValueError("RERANK_API_KEY environment variable is required")
 
     async def search(
         self,
@@ -79,34 +79,31 @@ class RerankedSearchEngine:
         results: List[Dict[str, Any]],
         batch_size: int,
     ) -> List[Dict[str, Any]]:
-        """Rerank results using cross-encoder."""
+        """Rerank results using reranking API."""
         entries = [self._get_entry(r["word"]) for r in results]
         entries = [e for e in entries if e]
 
         combined_scores: Dict[int, float] = {}
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            for batch_idx in range(0, len(entries), batch_size):
-                batch = entries[batch_idx : batch_idx + batch_size]
-                documents = [format_entry_multilang(e) for e in batch]
+        for batch_idx in range(0, len(entries), batch_size):
+            batch = entries[batch_idx : batch_idx + batch_size]
+            documents = [format_entry_multilang(e) for e in batch]
 
-                response = await client.post(
-                    RERANKER_URL,
-                    json={
-                        "model": RERANKER_MODEL,
-                        "query": query,
-                        "documents": documents,
-                    },
+            try:
+                rerank_results = await self.rerank_client.rerank(
+                    query=query,
+                    documents=documents,
+                    top_n=len(documents),
+                    return_documents=False,
                 )
 
-                if response.status_code != 200:
-                    break
-
-                rerank_results = response.json().get("results", [])
                 for item in rerank_results:
                     idx = item.get("index", 0) + batch_idx
                     score = item.get("relevance_score", 0)
                     combined_scores[idx] = combined_scores.get(idx, 0) + score
+            except Exception as e:
+                print(f"Reranking error: {e}")
+                break
 
         sorted_indices = sorted(
             combined_scores.keys(), key=lambda i: combined_scores[i], reverse=True
