@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generiere Embeddings über den lokalen Embedding-Server (/embeddings API)."""
+"""Generate embeddings via embedding API."""
 
 import sys
 import os
@@ -10,17 +10,16 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from prussian_engine.config import (
-    EMBEDDING_MODEL,
-    EMBEDDING_DIM,
-    PASSAGE_PREFIX,
-    OPENAI_BASE_URL,
-    OPENAI_API_KEY,
+    RERANK_API_KEY,
+    RERANK_EMBEDDING_MODEL,
+    RERANK_EMBEDDING_DIM,
+    RERANK_BASE_URL,
     DICTIONARY_PATH,
     EMBEDDINGS_PATH,
 )
-from openai import OpenAI
+from prussian_engine.embedding_client import EmbeddingClient
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 LANGUAGE_NAMES = {
     "engl": "English",
@@ -35,7 +34,7 @@ LANGUAGE_ORDER = ["engl", "miks", "leit", "latt", "pols", "mask"]
 
 
 def should_include_entry(entry: dict) -> bool:
-    """Prüfe ob Eintrag Übersetzungen hat (nicht nur Verweis)."""
+    """Check if entry has translations (not just a reference)."""
     translations = entry.get("translations", {})
     return any(
         isinstance(trans_list, list) and len(trans_list) > 0
@@ -44,11 +43,7 @@ def should_include_entry(entry: dict) -> bool:
 
 
 def make_passage(entry: dict) -> str:
-    """
-    Erzeuge Embedding-Passage als Liste der Quellsprachen.
-
-    Format: "English: House, Home; German: Haus; Lithuanian: Namas Namai; ..."
-    """
+    """Create embedding passage from translations."""
     parts = []
 
     translations = entry.get("translations", {})
@@ -65,104 +60,114 @@ def make_passage(entry: dict) -> str:
     return "; ".join(parts)
 
 
-print("=" * 60)
-print("Generating Embeddings via Model Server")
-print("=" * 60)
-print(f"Model:    {EMBEDDING_MODEL}")
-print(f"Server:   {OPENAI_BASE_URL}")
-print(f"Strategy: translations_only")
-print(f"Prefix:   '{PASSAGE_PREFIX}'")
-print(f"Batch:    {BATCH_SIZE}")
-print("=" * 60)
+def main():
+    if not RERANK_API_KEY:
+        print("ERROR: RERANK_API_KEY environment variable is required")
+        sys.exit(1)
 
-# Load dictionary
-print(f"\nLoading dictionary: {DICTIONARY_PATH}")
-with open(DICTIONARY_PATH, "r", encoding="utf-8") as f:
-    data = json.load(f)
+    print("=" * 60)
+    print("Generating Embeddings")
+    print("=" * 60)
+    print(f"Model:    {RERANK_EMBEDDING_MODEL}")
+    print(f"API:      {RERANK_BASE_URL}")
+    print(f"Dim:      {RERANK_EMBEDDING_DIM}")
+    print(f"Strategy: translations_only")
+    print(f"Batch:    {BATCH_SIZE}")
+    print("=" * 60)
 
-if isinstance(data, dict):
-    entries = list(data.values())
-elif isinstance(data, list):
-    entries = data
-else:
-    raise ValueError("Expected list or dict")
+    # Load dictionary
+    print(f"\nLoading dictionary: {DICTIONARY_PATH}")
+    with open(DICTIONARY_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-original_count = len(entries)
-entries = [e for e in entries if should_include_entry(e)]
-print(f"  {original_count} -> {len(entries)} entries (filtered references)")
+    if isinstance(data, dict):
+        entries = list(data.values())
+    elif isinstance(data, list):
+        entries = data
+    else:
+        raise ValueError("Expected list or dict")
 
-# Generate text representations
-texts = []
-for entry in entries:
-    text = PASSAGE_PREFIX + make_passage(entry)
-    texts.append(text)
+    original_count = len(entries)
+    entries = [e for e in entries if should_include_entry(e)]
+    print(f"  {original_count} -> {len(entries)} entries (filtered references)")
 
-print(f"  {len(texts)} texts prepared")
-print(f"  Example: {texts[0][:120]}...")
+    # Generate text representations
+    texts = []
+    for entry in entries:
+        text = make_passage(entry)
+        texts.append(text)
 
-# Connect to embedding server
-client = OpenAI(
-    api_key=OPENAI_API_KEY or "dummy",
-    base_url=OPENAI_BASE_URL,
-)
+    print(f"  {len(texts)} texts prepared")
+    print(f"  Example: {texts[0][:120]}...")
 
-# Generate embeddings in batches
-print(f"\nGenerating embeddings...")
-start = time.time()
-all_embeddings = []
-num_batches = (len(texts) + BATCH_SIZE - 1) // BATCH_SIZE
+    # Connect to embedding API
+    client = EmbeddingClient()
 
-for i in range(0, len(texts), BATCH_SIZE):
-    batch = texts[i : i + BATCH_SIZE]
-    response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=batch,
-    )
-    batch_embeddings = [item.embedding for item in response.data]
-    all_embeddings.extend(batch_embeddings)
+    # Generate embeddings in batches
+    print(f"\nGenerating embeddings...")
+    start = time.time()
+    all_embeddings = []
+    num_batches = (len(texts) + BATCH_SIZE - 1) // BATCH_SIZE
 
-    batch_num = (i // BATCH_SIZE) + 1
-    pct = (batch_num / num_batches) * 100
-    print(
-        f"  [{pct:5.1f}%] Batch {batch_num}/{num_batches} ({len(all_embeddings)} embeddings)",
-        end="\r",
-    )
+    for i in range(0, len(texts), BATCH_SIZE):
+        batch = texts[i : i + BATCH_SIZE]
 
-print()
-elapsed = time.time() - start
-print(f"  Done: {elapsed:.1f}s ({len(texts) / elapsed:.0f} entries/s)")
+        try:
+            batch_embeddings = client.get_embeddings(batch)
+            all_embeddings.extend(batch_embeddings)
+        except Exception as e:
+            print(f"\n  Error on batch {i // BATCH_SIZE + 1}: {e}")
+            all_embeddings.extend([np.zeros(RERANK_EMBEDDING_DIM)] * len(batch))
 
-# Convert to numpy
-embeddings = np.array(all_embeddings, dtype=np.float32)
-print(f"  Shape: {embeddings.shape}")
+        batch_num = (i // BATCH_SIZE) + 1
+        pct = (batch_num / num_batches) * 100
+        elapsed = time.time() - start
+        rate = (i + len(batch)) / elapsed if elapsed > 0 else 0
+        print(
+            f"  [{pct:5.1f}%] Batch {batch_num}/{num_batches} ({len(all_embeddings)} embeddings, {rate:.0f}/s)",
+            end="\r",
+        )
 
-if embeddings.shape[1] != EMBEDDING_DIM:
-    print(f"  WARNING: Expected dim={EMBEDDING_DIM}, got {embeddings.shape[1]}")
-    print(f"  Update EMBEDDING_DIM in config.py!")
+    print()
+    elapsed = time.time() - start
+    print(f"  Done: {elapsed:.1f}s ({len(texts) / elapsed:.0f} entries/s)")
 
-# Save
-output_path = str(EMBEDDINGS_PATH)
-print(f"\nSaving to: {output_path}")
+    # Convert to numpy
+    embeddings = np.array(all_embeddings, dtype=np.float32)
+    print(f"  Shape: {embeddings.shape}")
 
-np.save(f"{output_path}.embeddings.npy", embeddings)
+    if embeddings.shape[1] != RERANK_EMBEDDING_DIM:
+        print(
+            f"  WARNING: Expected dim={RERANK_EMBEDDING_DIM}, got {embeddings.shape[1]}"
+        )
 
-with open(f"{output_path}.entries.json", "w", encoding="utf-8") as f:
-    json.dump(entries, f, ensure_ascii=False, indent=2)
+    # Save
+    output_path = str(EMBEDDINGS_PATH)
+    print(f"\nSaving to: {output_path}")
 
-metadata = {
-    "model": EMBEDDING_MODEL,
-    "strategy": "translations_only",
-    "num_entries": len(entries),
-    "embedding_dim": int(embeddings.shape[1]),
-    "server": OPENAI_BASE_URL,
-}
+    np.save(f"{output_path}.embeddings.npy", embeddings)
 
-with open(f"{output_path}.meta.json", "w", encoding="utf-8") as f:
-    json.dump(metadata, f, indent=2)
+    with open(f"{output_path}.entries.json", "w", encoding="utf-8") as f:
+        json.dump(entries, f, ensure_ascii=False, indent=2)
 
-print(f"\n{'=' * 60}")
-print(f"Saved {len(entries)} embeddings ({embeddings.shape[1]}d)")
-print(f"  - {output_path}.embeddings.npy")
-print(f"  - {output_path}.entries.json")
-print(f"  - {output_path}.meta.json")
-print("=" * 60)
+    metadata = {
+        "model": RERANK_EMBEDDING_MODEL,
+        "provider": RERANK_BASE_URL,
+        "strategy": "translations_only",
+        "num_entries": len(entries),
+        "embedding_dim": int(embeddings.shape[1]),
+    }
+
+    with open(f"{output_path}.meta.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"\n{'=' * 60}")
+    print(f"Saved {len(entries)} embeddings ({embeddings.shape[1]}d)")
+    print(f"  - {output_path}.embeddings.npy")
+    print(f"  - {output_path}.entries.json")
+    print(f"  - {output_path}.meta.json")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,4 @@
-"""Search engine for Prussian Dictionary using E5 embeddings."""
+"""Search engine for Prussian Dictionary using embeddings."""
 
 import json
 import numpy as np
@@ -9,17 +9,15 @@ from .config import (
     DICTIONARY_PATH,
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
-    EMBEDDING_MODEL,
-    OPENAI_API_KEY,
-    OPENAI_BASE_URL,
-    RERANKER_MODEL,
+    RERANK_API_KEY,
+    RERANK_EMBEDDING_DIM,
 )
 
-from openai import OpenAI
+from .embedding_client import EmbeddingClient
 
 
 class SearchEngine:
-    """Semantic search engine using precomputed E5 embeddings."""
+    """Semantic search engine using precomputed embeddings."""
 
     def __init__(self):
         """Initialize search engine by loading dictionary and embeddings."""
@@ -28,16 +26,12 @@ class SearchEngine:
         self.word_to_entry: Dict[str, Dict[str, Any]] = {}
         self.form_to_lemma: Dict[str, str] = {}
 
-        # OpenAI client for embedding queries via local server
-        self.embedding_client = OpenAI(
-            api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL
-        )
+        if RERANK_API_KEY:
+            self.embedding_client = EmbeddingClient()
+        else:
+            raise ValueError("RERANK_API_KEY environment variable is required")
 
-        # Reranker client (same server, different model)
-        self.reranker_client = OpenAI(
-            api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL
-        )
-        self.reranker_available = False  # Disabled due to OVMS config issue
+        self.reranker_available = False  # Reranking handled separately
 
         self._load_dictionary()
         self._load_embeddings()
@@ -84,17 +78,13 @@ class SearchEngine:
         )
 
     def _get_query_embedding(self, query_text: str) -> np.ndarray:
-        """Encode query using local embedding server."""
+        """Encode query using embedding API."""
         try:
-            response = self.embedding_client.embeddings.create(
-                model=EMBEDDING_MODEL,
-                input=query_text,
-            )
-            embedding = np.array(response.data[0].embedding, dtype=np.float32)
+            embedding = self.embedding_client.get_embedding(query_text)
             return embedding
         except Exception as e:
             print(f"Error encoding query: {e}")
-            return np.zeros(1024, dtype=np.float32)
+            return np.zeros(RERANK_EMBEDDING_DIM, dtype=np.float32)
 
     def _rerank_candidates(
         self, query: str, candidates: List[Dict[str, Any]], top_k: int = 5
