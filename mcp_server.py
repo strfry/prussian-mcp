@@ -23,6 +23,41 @@ from prussian_engine.config import (
 from prussian_engine.tools import TOOLS
 from prussian_engine.rerank_search import RerankedSearchEngine
 
+# Parse command-line arguments at module level (before FastMCP construction)
+parser = argparse.ArgumentParser(
+    description="Prussian Dictionary MCP Server",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Transport modes:
+  stdio (default)  - For local CLI clients (Claude Code, Claude Desktop)
+  sse              - For HTTP clients (Claude Web) via SSE protocol
+
+Examples:
+  python mcp_server.py                    # Local: stdio on stdin/stdout
+  python mcp_server.py --web              # Web: SSE on http://localhost:8001
+  python mcp_server.py --web --port 9000  # Web: SSE on custom port
+    """,
+)
+parser.add_argument(
+    "--web",
+    action="store_true",
+    default=os.getenv("MCP_TRANSPORT") == "sse",
+    help="Use SSE transport for Claude Web (default: stdio for local CLI)",
+)
+parser.add_argument(
+    "--host",
+    default=os.getenv("MCP_HOST", "127.0.0.1"),
+    help="Server host for SSE mode (default: 127.0.0.1)",
+)
+parser.add_argument(
+    "--port",
+    type=int,
+    default=int(os.getenv("MCP_PORT", "8001")),
+    help="Server port for SSE mode (default: 8001)",
+)
+
+args = parser.parse_args()
+
 # Initialize FastMCP with security settings
 # Allow strfry.org for remote access via SSH tunnel
 security_settings = TransportSecuritySettings(
@@ -37,6 +72,8 @@ security_settings = TransportSecuritySettings(
 mcp = FastMCP(
     "Prussian Dictionary",
     transport_security=security_settings,
+    host=args.host,
+    port=args.port,
     debug=True,
     log_level="DEBUG",
     #    mount_path="/prussian-mcp",  # Tells FastMCP it's running under this prefix
@@ -455,45 +492,7 @@ else:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Prussian Dictionary MCP Server",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Transport modes:
-  stdio (default)  - For local CLI clients (Claude Code, Claude Desktop)
-  sse              - For HTTP clients (Claude Web) via SSE protocol
-
-Examples:
-  python mcp_server.py                    # Local: stdio on stdin/stdout
-  python mcp_server.py --web              # Web: SSE on http://localhost:8001
-  python mcp_server.py --web --port 9000  # Web: SSE on custom port
-        """,
-    )
-    parser.add_argument(
-        "--web",
-        action="store_true",
-        default=os.getenv("MCP_TRANSPORT") == "sse",
-        help="Use SSE transport for Claude Web (default: stdio for local CLI)",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.getenv("MCP_HOST", "127.0.0.1"),
-        help="Server host for SSE mode (default: 127.0.0.1)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.getenv("MCP_PORT", "8001")),
-        help="Server port for SSE mode (default: 8001)",
-    )
-
-    args = parser.parse_args()
-
     if args.web:
-        # For SSE mode, set environment variables for uvicorn
-        os.environ["FASTMCP_HOST"] = args.host
-        os.environ["FASTMCP_PORT"] = str(args.port)
-
         print(f"Starting MCP server in web mode (SSE)")
         print(f"  Address: http://{args.host}:{args.port}")
         print(f"  SSE endpoint: http://{args.host}:{args.port}/sse")
