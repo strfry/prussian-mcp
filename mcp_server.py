@@ -420,17 +420,18 @@ def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
 
 
 @mcp.tool()
-def get_word_forms(lemma: str) -> dict[str, Any]:
+def get_word_forms(lemma: str, filter: str = None) -> dict[str, Any]:
     """
-    Get all declension or conjugation forms for a Prussian lemma.
+    Get declension or conjugation forms for a Prussian lemma.
 
     Args:
         lemma: Prussian lemma (base form)
+        filter: Optional PGR filter (e.g. 'GEN.PL', 'PRES.1.SG')
 
     Returns:
-        Dictionary with lemma, translations, and all forms
+        Dictionary with lemma, translations, and forms (flat list with form/pgr)
     """
-    return search_engine.get_word_forms(lemma)
+    return search_engine.get_word_forms(lemma, filter_pgr=filter)
 
 
 # ── Static Files ────────────────────────────────────────────────────────────────
