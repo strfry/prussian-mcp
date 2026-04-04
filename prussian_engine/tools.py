@@ -27,13 +27,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_prussian_word",
-            "description": "Look up a Prussian word (lemma or inflected form) to verify its meaning. Use when you already have a Prussian word and need its translation. NOT for finding Prussian words from other languages - use search_dictionary for that!",
+            "description": "Look up a Prussian word (lemma or inflected form) to verify its meaning. Returns pgr annotation (e.g. 'ACC.SG.MASC' or 'GEN.PL.MASC|ACC.SG.MASC' for ambiguous forms). Use when you already have a Prussian word and need its translation. NOT for finding Prussian words from other languages - use search_dictionary for that!",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "word": {
                         "type": "string",
-                        "description": "Prussian word to look up (e.g., 'semmē', 'bēiti')",
+                        "description": "Prussian word to look up (e.g., 'semmē', 'bēiti', 'Dēiwan')",
                     },
                     "fuzzy": {
                         "type": "boolean",
@@ -49,14 +49,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_word_forms",
-            "description": "Get all declension or conjugation forms for a Prussian lemma.",
+            "description": "Get declension or conjugation forms for a Prussian lemma. Returns flat list with form and pgr fields. Use filter to get specific forms (e.g. 'GEN.PL' for genitive plural, 'PRES.1.SG' for present 1st singular).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "lemma": {
                         "type": "string",
                         "description": "Prussian lemma (base form) to get forms for",
-                    }
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "PGR filter, e.g. 'GEN.PL', 'PRES.1.SG', 'NOM.SG'. Returns only forms matching this pattern.",
+                    },
                 },
                 "required": ["lemma"],
             },

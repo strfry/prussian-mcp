@@ -14,6 +14,7 @@ from .config import (
 )
 
 from .embedding_client import EmbeddingClient
+from .pgr import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr
 
 
 class SearchEngine:
@@ -25,6 +26,7 @@ class SearchEngine:
         self.embeddings: Optional[np.ndarray] = None
         self.word_to_entry: Dict[str, Dict[str, Any]] = {}
         self.form_to_lemma: Dict[str, str] = {}
+        self.form_to_pgr: Dict[str, List[str]] = {}
 
         if RERANK_API_KEY:
             self.embedding_client = EmbeddingClient()
@@ -59,19 +61,23 @@ class SearchEngine:
 
     def _build_indices(self):
         """Build lookup indices for words and forms."""
-        # Map lemmas to entries
         for entry in self.entries:
             word = entry.get("word", "").lower()
             if word:
                 self.word_to_entry[word] = entry
 
-        # Map inflected forms to lemmas
         for entry in self.entries:
             lemma = entry.get("word", "").lower()
-            forms = self._extract_all_forms(entry)
-            for form in forms:
-                if form and form not in self.form_to_lemma:
-                    self.form_to_lemma[form] = lemma
+            forms_pgr = extract_pgr_from_entry(entry)
+            for form, pgr in forms_pgr:
+                if form:
+                    form_lower = form.lower()
+                    if form_lower not in self.form_to_lemma:
+                        self.form_to_lemma[form_lower] = lemma
+                    if form_lower not in self.form_to_pgr:
+                        self.form_to_pgr[form_lower] = []
+                    if pgr not in self.form_to_pgr[form_lower]:
+                        self.form_to_pgr[form_lower].append(pgr)
 
         print(
             f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
@@ -124,41 +130,6 @@ class SearchEngine:
             print(f"Reranker error: {e}")
 
         return candidates[:top_k]
-
-    def _extract_all_forms(self, entry: Dict[str, Any]) -> set:
-        """Extract all inflected forms from an entry."""
-        forms = set()
-        forms_data = entry.get("forms", {})
-
-        # Declension (nouns, adjectives)
-        if "declension" in forms_data:
-            for decl in forms_data["declension"]:
-                for case in decl.get("cases", []):
-                    if case.get("singular"):
-                        forms.add(case["singular"].lower())
-                    if case.get("plural"):
-                        forms.add(case["plural"].lower())
-
-        # Conjugation (verbs)
-        for mood in ["indicative", "subjunctive", "optative", "imperative"]:
-            if mood in forms_data:
-                for item in forms_data[mood]:
-                    if isinstance(item, dict):
-                        if "forms" in item:  # indicative has nested structure
-                            for form_obj in item["forms"]:
-                                if form_obj.get("form"):
-                                    forms.add(form_obj["form"].lower())
-                        elif "form" in item:  # other moods
-                            forms.add(item["form"].lower())
-
-        # Participles and infinitives
-        for category in ["participles", "infinitives"]:
-            if category in forms_data:
-                for item in forms_data[category]:
-                    if item.get("form"):
-                        forms.add(item["form"].lower())
-
-        return forms
 
     def _cosine_similarity(self, vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
         """Compute cosine similarity between vector and matrix."""
@@ -228,27 +199,39 @@ class SearchEngine:
 
         return results
 
-    def get_word_forms(self, lemma: str) -> Dict[str, Any]:
+    def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:
         """
         Get all declension or conjugation forms for a Prussian lemma.
 
         Args:
             lemma: Prussian lemma (base form)
+            filter_pgr: Optional PGR filter, e.g. "GEN.PL" or "PRES.1.SG"
 
         Returns:
-            Dictionary with lemma, translations, gender, and all forms
+            Dictionary with lemma, translations, and forms (flat list with PGR)
         """
-        results = self.lookup(lemma)
-        if not results:
+        word_lower = lemma.lower().strip()
+        if word_lower not in self.word_to_entry:
             return {"error": f"Word not found: {lemma}"}
 
-        result = results[0]
+        entry = self.word_to_entry[word_lower]
+        translations = entry.get("translations", {})
+        forms_pgr = extract_pgr_from_entry(entry)
+
+        filtered_forms = []
+        for form, pgr in forms_pgr:
+            if filter_pgr and not match_pgr(pgr, filter_pgr):
+                continue
+            filtered_forms.append({"form": form, "pgr": pgr})
+
         return {
-            "lemma": result["word"],
-            "translations": {"de": result["de"], "en": result["en"]},
-            "paradigm": result.get("paradigm", ""),
-            "gender": result.get("gender", ""),
-            "forms": result.get("forms", {}),
+            "lemma": entry.get("word", ""),
+            "translations": {
+                "de": translations.get("miks", [""])[0],
+                "en": translations.get("engl", [""])[0],
+            },
+            "gender": entry.get("gender", ""),
+            "forms": filtered_forms,
         }
 
     def lookup(self, prussian_word: str, fuzzy: bool = True) -> List[Dict[str, Any]]:
@@ -335,7 +318,27 @@ class SearchEngine:
                         if result not in results:
                             results.append(result)
 
+        results = self._follow_references(results)
         return results
+
+    def _follow_references(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Add lemma results for reference entries.
+
+        For each reference entry found, resolve to its main lemma
+        and add the lemma result with matching form's pgr.
+        """
+        all_results = list(results)
+
+        for result in results:
+            if "desc" in result and result["desc"].startswith("↑"):
+                target = self._extract_reference_target(result["desc"])
+                if target:
+                    lemma_results = self._resolve_reference(target, result["word"])
+                    for lr in lemma_results:
+                        if lr not in all_results:
+                            all_results.append(lr)
+
+        return all_results
 
     def _normalize_macrons(self, word: str) -> str:
         """Remove macrons for fuzzy matching."""
@@ -417,38 +420,119 @@ class SearchEngine:
 
         return score
 
-    def _find_json_paths(
-        self, obj, target: str, path: List[str] = []
-    ) -> List[List[str]]:
-        """Recursively find all paths in a JSON structure where a value matches target."""
-        results = []
+    def _extract_reference_target(self, desc: str) -> Optional[str]:
+        """Extract target lemma from reference description.
+
+        Args:
+            desc: Description like "↑ Abbai dat" or "↑ Dēiws acc"
+
+        Returns:
+            Target lemma or None if not a reference
+        """
+        if not desc or not desc.startswith("↑"):
+            return None
+
+        parts = desc[1:].strip().split()
+        if parts:
+            return parts[0]
+        return None
+
+    def _simplify_pgr(self, pgr_string: str) -> str:
+        """Simplify PGR by outputting only common features.
+
+        GEN.PL.MASC|GEN.PL.FEM|GEN.PL.NEUT → GEN.PL
+        NOM.SG.MASC|NOM.SG.FEM → NOM.SG
+        NOM.SG.MASC|GEN.PL.FEM → NOM.SG.MASC|GEN.PL.FEM (no simplification)
+
+        Args:
+            pgr_string: Pipe-separated PGR strings
+
+        Returns:
+            Simplified PGR string
+        """
+        if not pgr_string or "|" not in pgr_string:
+            return pgr_string
+
+        pgrs = pgr_string.split("|")
+        if len(pgrs) == 1:
+            return pgr_string
+
+        features_list = [parse_pgr(p) for p in pgrs]
+
+        common_keys = set(features_list[0].keys())
+        for features in features_list[1:]:
+            common_keys &= set(features.keys())
+
+        if not common_keys:
+            return pgr_string
+
+        keys_to_remove = []
+        for key in common_keys:
+            values = set(f[key] for f in features_list if key in f)
+            if len(values) > 1:
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            common_keys.discard(key)
+
+        if not common_keys:
+            return pgr_string
+
+        common_features = {k: features_list[0][k] for k in common_keys}
+        return build_pgr(common_features)
+
+    def _resolve_reference(self, target: str, ref_word: str) -> List[Dict[str, Any]]:
+        """Resolve a reference to a lemma and return formatted results.
+
+        Args:
+            target: Target lemma name (e.g., "abbai")
+            ref_word: The reference word (e.g., "abbejan")
+
+        Returns:
+            List with single formatted result containing pgr from matching forms
+        """
         target_lower = target.lower()
-        target_normalized = self._normalize_macrons(target_lower)
+        if target_lower not in self.word_to_entry:
+            return []
 
-        if isinstance(obj, str):
-            val = obj.lower()
-            if val == target_lower or self._normalize_macrons(val) == target_normalized:
-                results.append(list(path))
-        elif isinstance(obj, dict):
-            for k, v in obj.items():
-                results.extend(self._find_json_paths(v, target, path + [k]))
-        elif isinstance(obj, list):
-            for i, v in enumerate(obj):
-                results.extend(self._find_json_paths(v, target, path + [str(i)]))
+        entry = self.word_to_entry[target_lower]
+        forms_pgr = extract_pgr_from_entry(entry)
 
-        return results
+        matching = [(f, p) for f, p in forms_pgr if f.lower() == ref_word.lower()]
+
+        if not matching:
+            return []
+
+        translations = entry.get("translations", {})
+        de_trans = translations.get("miks", [])
+        en_trans = translations.get("engl", [])
+
+        pgrs = [p for _, p in matching]
+        pgr_string = "|".join(pgrs)
+        simplified_pgr = self._simplify_pgr(pgr_string)
+
+        return [
+            {
+                "word": entry.get("word", ""),
+                "de": de_trans[0] if de_trans else "",
+                "en": en_trans[0] if en_trans else "",
+                "matched_form": ref_word,
+                "pgr": simplified_pgr,
+            }
+        ]
 
     def _format_lookup_result(
         self, entry: Dict[str, Any], matched_form: str = None
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
-        Lookup returns only: word, translations, gender, matched_form/paths (if inflected).
-        Full forms/tables are only returned by get_word_forms().
+        Reference entries are formatted with desc only (no pgr).
+        Lemma entries with matched forms get pgr from form index.
         """
         translations = entry.get("translations", {})
         de_trans = translations.get("miks", [])
         en_trans = translations.get("engl", [])
+
         result = {
             "word": entry.get("word", ""),
             "de": de_trans[0] if de_trans else "",
@@ -458,12 +542,17 @@ class SearchEngine:
         if entry.get("gender"):
             result["gender"] = entry["gender"]
 
-        if matched_form and matched_form != entry.get("word", "").lower():
-            paths = self._find_json_paths(entry.get("forms", {}), matched_form)
-            if paths:
-                result["matched_form"] = matched_form
-                result["matched_paths"] = ["/".join(p) for p in paths]
+        desc = entry.get("desc", "")
 
-        return result
+        if desc.startswith("↑"):
+            result["desc"] = desc
+            return result
+
+        if matched_form and matched_form != entry.get("word", "").lower():
+            result["matched_form"] = matched_form
+            pgrs = self.form_to_pgr.get(matched_form.lower(), [])
+            if pgrs:
+                pgr_string = "|".join(pgrs)
+                result["pgr"] = self._simplify_pgr(pgr_string)
 
         return result
