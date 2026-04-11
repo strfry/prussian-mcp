@@ -334,7 +334,7 @@ async def complete_entry(stub):
             await fetch(BASE + "/search/", params={"s": entry["word"], "language": lang, "dia": DIALECT})
         )
         for r in results:
-            if r["word"] == entry["word"] and r["paradigm"] == entry["paradigm"]:
+            if r["word"] == entry["word"] and r["paradigm"] == entry["paradigm"] and r["desc"] == entry["desc"]:
                 if r["translations_engl"]:
                     return lang, r["translations_engl"]
                 break
@@ -441,6 +441,55 @@ def show_status():
         print(f"  forms: {fc}/{len(entries)}")
 
 
+# --- Rescrape homonyms ---
+
+async def phase_rescrape_homonyms():
+    """Re-fetch entries where (word, paradigm) is not unique.
+
+    These are homonyms that the original scraper may have mixed up because
+    it matched only on word+paradigm without checking desc.
+    """
+    from collections import Counter
+
+    entries = load_output()
+    counts = Counter((e["word"], e["paradigm"]) for e in entries)
+    dupes = {k for k, v in counts.items() if v > 1}
+
+    if not dupes:
+        print("No homonyms found — nothing to rescrape.", file=sys.stderr)
+        return
+
+    to_rescrape = [(i, e) for i, e in enumerate(entries) if (e["word"], e["paradigm"]) in dupes]
+    print(f"Rescraping {len(to_rescrape)} entries ({len(dupes)} homonym groups):", file=sys.stderr)
+    for _, e in to_rescrape:
+        print(f"  {e['word']} [{e['paradigm']}] {e['desc']}", file=sys.stderr)
+
+    for idx, old_entry in to_rescrape:
+        # Build stub from existing entry (no wordlist needed)
+        translations = old_entry.get("translations", {})
+        stub = {
+            "word": old_entry["word"],
+            "paradigm": old_entry["paradigm"],
+            "gender": old_entry.get("gender", ""),
+            "desc": old_entry["desc"],
+            "audio": old_entry.get("audio", ""),
+            "description": old_entry.get("description", ""),
+            "translations_engl": translations.get("engl", []),
+        }
+
+        new_entry = await complete_entry(stub)
+        # Preserve any existing translations that the rescrape didn't find
+        for lang, trans in translations.items():
+            if lang not in new_entry.get("translations", {}):
+                new_entry["translations"][lang] = trans
+
+        entries[idx] = new_entry
+        print(f"  ✓ {new_entry['word']} [{new_entry['paradigm']}] {new_entry['desc']}", file=sys.stderr)
+
+    save_output(entries)
+    print(f"Done. Updated {len(to_rescrape)} entries.", file=sys.stderr)
+
+
 # --- Main ---
 
 async def run_and_close(coro):
@@ -473,5 +522,7 @@ if __name__ == "__main__":
         show_status()
     elif "--test" in sys.argv:
         asyncio.run(run_and_close(test_scrape()))
+    elif "--rescrape-homonyms" in sys.argv:
+        asyncio.run(run_and_close(phase_rescrape_homonyms()))
     else:
         asyncio.run(run_and_close(main()))
