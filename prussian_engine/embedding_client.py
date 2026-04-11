@@ -7,9 +7,9 @@ from typing import List, Dict, Any
 from .config import (
     RERANK_API_KEY,
     RERANK_BASE_URL,
-    RERANK_EMBEDDING_MODEL,
-    RERANK_EMBEDDING_DIM,
-    RERANK_RERANKER_MODEL,
+    EMBEDDING_MODEL,
+    EMBEDDING_DIM,
+    RERANKER_MODEL,
 )
 
 
@@ -26,9 +26,9 @@ class EmbeddingClient:
     ):
         self.api_key = api_key or RERANK_API_KEY
         self.base_url = (base_url or RERANK_BASE_URL).rstrip("/")
-        self.embedding_model = embedding_model or RERANK_EMBEDDING_MODEL
-        self.embedding_dim = embedding_dim or RERANK_EMBEDDING_DIM
-        self.reranker_model = reranker_model or RERANK_RERANKER_MODEL
+        self.embedding_model = embedding_model or EMBEDDING_MODEL
+        self.embedding_dim = embedding_dim or EMBEDDING_DIM
+        self.reranker_model = reranker_model or RERANKER_MODEL
 
     def get_embeddings(self, texts: List[str]) -> np.ndarray:
         """Get embeddings for a list of texts.
@@ -60,8 +60,23 @@ class EmbeddingClient:
                     f"Embedding API error: {response.status_code} - {response.text}"
                 )
 
-            data = response.json()
-            embeddings = [item["embedding"] for item in data["data"]]
+            try:
+                data = response.json()
+            except Exception:
+                raise Exception(
+                    f"Embedding API returned invalid JSON: {response.text[:200]}"
+                )
+
+            embeddings = []
+            for item in data["data"]:
+                vec = item["embedding"]
+                if not vec or not any(isinstance(v, (int, float)) and v != 0 for v in vec):
+                    raise Exception(
+                        f"Embedding API returned empty/null embedding vector "
+                        f"(len={len(vec) if vec else 0}). "
+                        f"Check if the model '{self.embedding_model}' is loaded correctly on {self.base_url}"
+                    )
+                embeddings.append(vec)
             return np.array(embeddings, dtype=np.float32)
 
     def get_embedding(self, text: str) -> np.ndarray:

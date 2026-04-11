@@ -24,6 +24,7 @@ embeddings/
 # Environment
 .env
 *.env
+env.local.sh
 
 # Logs
 *.log

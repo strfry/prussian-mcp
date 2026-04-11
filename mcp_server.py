@@ -361,7 +361,7 @@ async def openai_completions_endpoint(request):
 
 @mcp.tool()
 def search_dictionary(
-    query: str, top_k: int = 10, use_reranker: bool = False
+    query: str, top_k: int = 10, use_reranker: bool = True
 ) -> list[dict[str, Any]]:
     """
     Semantic search in the Prussian dictionary with optional reranking.
