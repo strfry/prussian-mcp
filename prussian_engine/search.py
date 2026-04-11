@@ -24,7 +24,7 @@ class SearchEngine:
         """Initialize search engine by loading dictionary and embeddings."""
         self.entries: List[Dict[str, Any]] = []
         self.embeddings: Optional[np.ndarray] = None
-        self.word_to_entry: Dict[str, Dict[str, Any]] = {}
+        self.word_to_entry: Dict[str, List[Dict[str, Any]]] = {}
         self.form_to_lemma: Dict[str, str] = {}
         self.form_to_pgr: Dict[str, List[str]] = {}
 
@@ -64,7 +64,7 @@ class SearchEngine:
         for entry in self.entries:
             word = entry.get("word", "").lower()
             if word:
-                self.word_to_entry[word] = entry
+                self.word_to_entry.setdefault(word, []).append(entry)
 
         for entry in self.entries:
             lemma = entry.get("word", "").lower()
@@ -182,13 +182,10 @@ class SearchEngine:
 
             # Only return lemmas with translations (not inflected forms)
             if translations:
-                de_trans = translations.get("miks", [])
-                en_trans = translations.get("engl", [])
                 results.append(
                     {
                         "word": entry.get("word", ""),
-                        "de": de_trans[0] if de_trans else "",
-                        "en": en_trans[0] if en_trans else "",
+                        "translations": translations,
                         "score": float(similarities[idx]),
                     }
                 )
@@ -213,25 +210,26 @@ class SearchEngine:
         if word_lower not in self.word_to_entry:
             return {"error": f"Word not found: {lemma}"}
 
-        entry = self.word_to_entry[word_lower]
-        translations = entry.get("translations", {})
-        forms_pgr = extract_pgr_from_entry(entry)
+        entries = self.word_to_entry[word_lower]
+        results = []
+        for entry in entries:
+            translations = entry.get("translations", {})
+            forms_pgr = extract_pgr_from_entry(entry)
 
-        filtered_forms = []
-        for form, pgr in forms_pgr:
-            if filter_pgr and not match_pgr(pgr, filter_pgr):
-                continue
-            filtered_forms.append({"form": form, "pgr": pgr})
+            filtered_forms = []
+            for form, pgr in forms_pgr:
+                if filter_pgr and not match_pgr(pgr, filter_pgr):
+                    continue
+                filtered_forms.append({"form": form, "pgr": pgr})
 
-        return {
-            "lemma": entry.get("word", ""),
-            "translations": {
-                "de": translations.get("miks", [""])[0],
-                "en": translations.get("engl", [""])[0],
-            },
-            "gender": entry.get("gender", ""),
-            "forms": filtered_forms,
-        }
+            results.append({
+                "lemma": entry.get("word", ""),
+                "translations": translations,
+                "gender": entry.get("gender", ""),
+                "forms": filtered_forms,
+            })
+
+        return results
 
     def lookup(self, prussian_word: str, fuzzy: bool = True) -> List[Dict[str, Any]]:
         """
@@ -250,14 +248,13 @@ class SearchEngine:
         # Try exact match first
         # Check if it's a lemma
         if word_lower in self.word_to_entry:
-            entry = self.word_to_entry[word_lower]
-            results.append(self._format_lookup_result(entry, matched_form=word_lower))
+            for entry in self.word_to_entry[word_lower]:
+                results.append(self._format_lookup_result(entry, matched_form=word_lower))
 
         # Check if it's an inflected form
         elif word_lower in self.form_to_lemma:
             lemma = self.form_to_lemma[word_lower]
-            entry = self.word_to_entry.get(lemma)
-            if entry:
+            for entry in self.word_to_entry.get(lemma, []):
                 results.append(
                     self._format_lookup_result(entry, matched_form=word_lower)
                 )
@@ -267,18 +264,18 @@ class SearchEngine:
             word_normalized = self._normalize_macrons(word_lower)
 
             # Find all lemmata that match when normalized
-            for lemma, entry in self.word_to_entry.items():
+            for lemma, entries in self.word_to_entry.items():
                 if self._normalize_macrons(lemma) == word_normalized:
-                    results.append(
-                        self._format_lookup_result(entry, matched_form=word_lower)
-                    )
+                    for entry in entries:
+                        results.append(
+                            self._format_lookup_result(entry, matched_form=word_lower)
+                        )
 
             # Find all forms that match when normalized
             if not results:
                 for form, lemma in self.form_to_lemma.items():
                     if self._normalize_macrons(form) == word_normalized:
-                        entry = self.word_to_entry.get(lemma)
-                        if entry:
+                        for entry in self.word_to_entry.get(lemma, []):
                             result = self._format_lookup_result(
                                 entry, matched_form=word_lower
                             )
@@ -289,12 +286,13 @@ class SearchEngine:
             if not results and fuzzy:
                 word_norm = word_normalized
                 candidates = []
-                for lemma, entry in self.word_to_entry.items():
+                for lemma, entries in self.word_to_entry.items():
                     lemma_norm = self._normalize_macrons(lemma)
                     dist = self._levenshtein_distance(word_norm, lemma_norm)
                     if dist <= 2:
                         score = self._fuzzy_score(word_norm, lemma_norm, dist)
-                        candidates.append((score, dist, lemma, entry))
+                        for entry in entries:
+                            candidates.append((score, dist, lemma, entry))
 
                 # Sort by fuzzy score first, then use reranker on top candidates
                 candidates.sort(key=lambda x: (-x[0], x[1]))
@@ -494,31 +492,26 @@ class SearchEngine:
         if target_lower not in self.word_to_entry:
             return []
 
-        entry = self.word_to_entry[target_lower]
-        forms_pgr = extract_pgr_from_entry(entry)
+        results = []
+        for entry in self.word_to_entry[target_lower]:
+            forms_pgr = extract_pgr_from_entry(entry)
+            matching = [(f, p) for f, p in forms_pgr if f.lower() == ref_word.lower()]
 
-        matching = [(f, p) for f, p in forms_pgr if f.lower() == ref_word.lower()]
+            if not matching:
+                continue
 
-        if not matching:
-            return []
+            pgrs = [p for _, p in matching]
+            pgr_string = "|".join(pgrs)
+            simplified_pgr = self._simplify_pgr(pgr_string)
 
-        translations = entry.get("translations", {})
-        de_trans = translations.get("miks", [])
-        en_trans = translations.get("engl", [])
-
-        pgrs = [p for _, p in matching]
-        pgr_string = "|".join(pgrs)
-        simplified_pgr = self._simplify_pgr(pgr_string)
-
-        return [
-            {
+            results.append({
                 "word": entry.get("word", ""),
-                "de": de_trans[0] if de_trans else "",
-                "en": en_trans[0] if en_trans else "",
+                "translations": entry.get("translations", {}),
                 "matched_form": ref_word,
                 "pgr": simplified_pgr,
-            }
-        ]
+            })
+
+        return results
 
     def _format_lookup_result(
         self, entry: Dict[str, Any], matched_form: str = None
@@ -529,13 +522,10 @@ class SearchEngine:
         Lemma entries with matched forms get pgr from form index.
         """
         translations = entry.get("translations", {})
-        de_trans = translations.get("miks", [])
-        en_trans = translations.get("engl", [])
 
         result = {
             "word": entry.get("word", ""),
-            "de": de_trans[0] if de_trans else "",
-            "en": en_trans[0] if en_trans else "",
+            "translations": translations,
         }
 
         if entry.get("gender"):

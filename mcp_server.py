@@ -402,7 +402,7 @@ def search_dictionary(
     else:
         results = search_engine.query(query, top_k)
 
-    return [{"word": r["word"], "de": r["de"], "en": r["en"]} for r in results]
+    return [{"word": r["word"], "translations": r["translations"]} for r in results]
 
 
 @mcp.tool()
@@ -420,7 +420,7 @@ def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
 
 
 @mcp.tool()
-def get_word_forms(lemma: str, filter: str = None) -> dict[str, Any]:
+def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
     """
     Get declension or conjugation forms for a Prussian lemma.
 
@@ -429,7 +429,7 @@ def get_word_forms(lemma: str, filter: str = None) -> dict[str, Any]:
         filter: Optional PGR filter (e.g. 'GEN.PL', 'PRES.1.SG')
 
     Returns:
-        Dictionary with lemma, translations, and forms (flat list with form/pgr)
+        List of entries with lemma, translations, and forms (one per homonym)
     """
     return search_engine.get_word_forms(lemma, filter_pgr=filter)
 
