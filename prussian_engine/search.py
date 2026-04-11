@@ -10,7 +10,7 @@ from .config import (
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
     RERANK_API_KEY,
-    RERANK_EMBEDDING_DIM,
+    EMBEDDING_DIM,
 )
 
 from .embedding_client import EmbeddingClient
@@ -89,8 +89,7 @@ class SearchEngine:
             embedding = self.embedding_client.get_embedding(query_text)
             return embedding
         except Exception as e:
-            print(f"Error encoding query: {e}")
-            return np.zeros(RERANK_EMBEDDING_DIM, dtype=np.float32)
+            raise RuntimeError(f"Query embedding failed: {e}")
 
     def _rerank_candidates(
         self, query: str, candidates: List[Dict[str, Any]], top_k: int = 5
