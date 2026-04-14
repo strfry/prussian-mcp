@@ -33,15 +33,39 @@ print(f"Search engine loaded: {len(_search_engine.entries)} entries indexed")
 # ============================================================
 
 
-def search_dictionary(query: str, top_k: int = 5) -> str:
-    """Search the Prussian dictionary.
+_seen_words = set()  # Track words already returned with full translations
+
+
+def search_dictionary(query: str, top_k: int = 5, filter_pgr: str = None) -> str:
+    """Search the Prussian dictionary by German/English query, then optionally filter forms by PGR.
 
     Args:
-        query: Search query in German/English
+        query: Search query in German or English (e.g. "Sohn", "give", "dog")
         top_k: Number of results to return
+        filter_pgr: Optional PGR filter for grammatical forms (e.g. "GEN.SG", "ACC.PL", "PRS.3.SG.IND")
     """
     results = _search_engine.query(query, top_k=top_k)
-    return json.dumps(results[:top_k], ensure_ascii=False)
+    output = []
+    for r in results[:top_k]:
+        word = r["word"]
+        # Only include full translations on first encounter
+        if word in _seen_words:
+            entry = {"word": word, "seen_before": True}
+        else:
+            entry = {"word": word, "translations": r["translations"]}
+            _seen_words.add(word)
+        if filter_pgr:
+            forms_data = _search_engine.get_word_forms(word, filter_pgr=filter_pgr)
+            if isinstance(forms_data, list):
+                for fd in forms_data:
+                    if fd.get("forms"):
+                        # Put the matched form front and center so the model uses it
+                        entry["matched_form"] = fd["forms"][0]["form"]
+                        entry["matched_pgr"] = fd["forms"][0]["pgr"]
+                        entry["gender"] = fd.get("gender", "")
+                        break
+        output.append(entry)
+    return json.dumps(output, ensure_ascii=False)
 
 
 def get_word_forms(lemma: str, filter_pgr: str = None) -> str:
@@ -142,7 +166,7 @@ def create_pipeline(tools: list) -> Pipeline:
         tools=tools,
         generation_kwargs={
             "temperature": 0.1,
-            "max_completion_tokens": 600,
+            "max_completion_tokens": 8192,
         },
     )
 
@@ -189,6 +213,7 @@ def run_with_tools(
     user_input: str,
     phase: str,
     max_loops: int = 10,
+    extra_vars: dict = None,
 ) -> str:
     """Run tool calling loop externally (for proper feedback)."""
 
@@ -199,41 +224,50 @@ def run_with_tools(
     template_content = template_path.read_text()
     from jinja2 import Template
 
-    system_prompt = Template(template_content).render(
-        phase=phase, user_input=user_input
-    )
+    template_vars = {"phase": phase, "user_input": user_input}
+    if extra_vars:
+        template_vars.update(extra_vars)
+    system_prompt = Template(template_content).render(**template_vars)
+
+    _seen_words.clear()
+
+    messages = [
+        ChatMessage.from_system(system_prompt),
+        ChatMessage.from_user(user_input),
+    ]
 
     for turn in range(max_loops):
-        # Reset generator state (rebuild messages)
-        messages = [
-            ChatMessage.from_system(system_prompt),
-            ChatMessage.from_user(user_input),
-        ]
-
-        # First call (without messages for first turn)
         reply = generator.run(messages=messages)
         replies = reply["replies"]
+        msg = replies[0]
 
-        print(f"  [Turn {turn + 1}] Has tool_calls: {bool(replies[0].tool_calls)}")
+        # Newline after streaming output
+        print()
 
-        if replies[0].tool_calls:
-            # Execute tools
-            tc_result = tool_invoker.run(messages=replies)
-            print(f"  [Turn {turn + 1}] Tool result raw: {tc_result}")
+        if not msg.tool_calls:
+            return msg.text
 
-            tool_messages = tc_result["tool_messages"]
-            print(f"  [Turn {turn + 1}] Tool messages: {tool_messages}")
+        # Show tool calls
+        for tc in msg.tool_calls:
+            args_str = ", ".join(f"{k}={json.dumps(v)}" for k, v in tc.arguments.items())
+            print(f"  🔧 {tc.tool_name}({args_str})")
 
-            # Add messages for next turn
-            messages.extend(replies)
-            messages.extend(tool_messages)
+        # Execute tools
+        tc_result = tool_invoker.run(messages=replies)
+        tool_messages = tc_result["tool_messages"]
 
-            if turn >= max_loops - 1:
-                return "Max loops reached"
-        else:
-            return replies[0].text
+        # Show tool results (compact)
+        for tm in tool_messages:
+            for content in tm._content:
+                result_str = content.result
+                if len(result_str) > 200:
+                    result_str = result_str[:200] + "..."
+                print(f"  → {result_str}")
 
-    return "Max loops reached"
+        messages.extend(replies)
+        messages.extend(tool_messages)
+
+    return "Max loops reached (increase max_loops?)"
 
 
 # ============================================================
@@ -258,15 +292,37 @@ def main():
     base_url = os.environ.get("LLM_URL", "http://localhost:8001/v3")
     model = os.environ.get("OPENAI_MODEL", "gpt-oss-20b-int4-ov")
 
+    # Patch Haystack's chunk builder to pass through reasoning_content from OVMS
+    import haystack.components.generators.chat.openai as _oai_mod
+    _orig_convert = _oai_mod._convert_chat_completion_chunk_to_streaming_chunk
+    def _patched_convert(chunk, previous_chunks, component_info=None):
+        sc = _orig_convert(chunk, previous_chunks, component_info)
+        # Extract reasoning_content from OVMS/Qwen deltas
+        if chunk.choices:
+            rc = getattr(chunk.choices[0].delta, "reasoning_content", None)
+            if rc:
+                from haystack.dataclasses.chat_message import ReasoningContent
+                sc.reasoning = ReasoningContent(reasoning_text=rc)
+        return sc
+    _oai_mod._convert_chat_completion_chunk_to_streaming_chunk = _patched_convert
+
+    def stream_callback(chunk):
+        """Print tokens as they arrive."""
+        if chunk.reasoning and chunk.reasoning.reasoning_text:
+            print(f"\033[2m{chunk.reasoning.reasoning_text}\033[0m", end="", flush=True)
+        if chunk.content:
+            print(chunk.content, end="", flush=True)
+
     generator = OpenAIChatGenerator(
         model=model,
         api_key=Secret.from_env_var("OPENAI_API_KEY", strict=False),
         api_base_url=base_url,
         http_client_kwargs={"timeout": 120.0},
         tools=tools,
+        streaming_callback=stream_callback,
         generation_kwargs={
             "temperature": 0.1,
-            "max_completion_tokens": 600,
+            "max_completion_tokens": 8192,
         },
     )
 
@@ -277,12 +333,20 @@ def main():
 
     print(f"\n=== Testing: {test_sentence} ===")
 
-    # Phase 1: Vocabulary
+    # Phase 1: Vocabulary (with tools)
     print("\n--- Phase 1: Vocabulary ---")
-    result1 = run_with_tools(
-        generator, tool_invoker, tools, test_sentence, "vocabulary", max_loops=5
+    vocab_result = run_with_tools(
+        generator, tool_invoker, tools, test_sentence, "vocabulary", max_loops=15
     )
-    print(f"Result: {result1[:300]}...")
+    print(f"Vocabulary:\n{vocab_result}\n")
+
+    # Phase 2: Compose (no tools — just grammar + vocab)
+    print("--- Phase 2: Compose ---")
+    compose_result = run_with_tools(
+        generator, tool_invoker, tools, test_sentence, "compose",
+        max_loops=1, extra_vars={"vocabulary": vocab_result},
+    )
+    print(f"Result: {compose_result}")
 
     return 0
 
