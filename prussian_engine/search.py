@@ -28,10 +28,7 @@ class SearchEngine:
         self.form_to_lemma: Dict[str, str] = {}
         self.form_to_pgr: Dict[str, List[str]] = {}
 
-        if RERANK_API_KEY:
-            self.embedding_client = EmbeddingClient()
-        else:
-            raise ValueError("RERANK_API_KEY environment variable is required")
+        self.embedding_client = EmbeddingClient()
 
         self.reranker_available = False  # Reranking handled separately
 

@@ -39,10 +39,9 @@ class EmbeddingClient:
         Returns:
             numpy array of shape (len(texts), embedding_dim)
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload = {
             "model": self.embedding_model,
@@ -102,10 +101,9 @@ class EmbeddingClient:
         Returns:
             List of dicts with index, relevance_score, and optionally document
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload = {
             "model": self.reranker_model,
