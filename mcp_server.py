@@ -361,18 +361,19 @@ async def openai_completions_endpoint(request):
 
 @mcp.tool()
 def search_dictionary(
-    query: str, top_k: int = 10, use_reranker: bool = True
+    query: str, top_k: int = 10, use_reranker: bool = True, filter_pgr: str = None
 ) -> list[dict[str, Any]]:
     """
-    Semantic search in the Prussian dictionary with optional reranking.
+    Semantic search in the Prussian dictionary with optional reranking and PGR form filtering.
 
     Args:
         query: Search query in multiple languages (German, English, Lithuanian, Latvian, Polish, Russian)
         top_k: Number of results to return
         use_reranker: Use reranker for better semantic ranking (slower but more accurate)
+        filter_pgr: Optional PGR filter for grammatical forms, e.g. "GEN.SG", "ACC.PL.MASC", "PRS.3.SG.IND"
 
     Returns:
-        List of dictionary entries with translations
+        List of dictionary entries with translations and optionally filtered forms
     """
     global reranked_engine
 
@@ -402,7 +403,19 @@ def search_dictionary(
     else:
         results = search_engine.query(query, top_k)
 
-    return [{"word": r["word"], "translations": r["translations"]} for r in results]
+    output = []
+    for r in results:
+        entry = {"word": r["word"], "translations": r["translations"]}
+        if filter_pgr:
+            forms_data = search_engine.get_word_forms(r["word"], filter_pgr=filter_pgr)
+            if isinstance(forms_data, list):
+                for fd in forms_data:
+                    if fd.get("forms"):
+                        entry["forms"] = fd["forms"]
+                        entry["gender"] = fd.get("gender", "")
+                        break
+        output.append(entry)
+    return output
 
 
 @mcp.tool()
