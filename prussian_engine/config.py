@@ -15,21 +15,19 @@ SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
 
 # Embedding & Reranking API Configuration
 # Defaults: Jina AI. Override via environment variables for local models (e.g. OVMS + Qwen).
-RERANK_API_KEY = os.getenv("RERANK_API_KEY", "") or os.getenv("JINA_API_KEY", "")
-RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "") or os.getenv(
-    "JINA_BASE_URL", "https://api.jina.ai"
-)
+RERANK_API_KEY = os.getenv("RERANK_API_KEY", "")
+RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-embeddings-v5-text-small")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
 
-# Asymmetric search prefixes (Qwen3-Embedding style).
-# Set via env vars when using models that need instruct prefixes.
-# For Jina, leave empty. For Qwen3-Embedding, set:
+# Asymmetric search prefixes.
+# Defaults match Jina v3/v5 local-inference convention ("Query: " / "Document: ").
+# For Qwen3-Embedding, override via env:
 #   QUERY_PREFIX="Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
 #   PASSAGE_PREFIX="Instruct: Represent this word and its translations for retrieval\n"
-QUERY_PREFIX = os.getenv("QUERY_PREFIX", "")
-PASSAGE_PREFIX = os.getenv("PASSAGE_PREFIX", "")
+QUERY_PREFIX = os.getenv("QUERY_PREFIX", "Query: ")
+PASSAGE_PREFIX = os.getenv("PASSAGE_PREFIX", "Document: ")
 
 # LLM Configuration (for chat/llm features)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
