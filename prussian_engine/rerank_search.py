@@ -79,14 +79,27 @@ class RerankedSearchEngine:
         results: List[Dict[str, Any]],
         batch_size: int,
     ) -> List[Dict[str, Any]]:
-        """Rerank results using reranking API."""
-        entries = [self._get_entry(r["word"]) for r in results]
-        entries = [e for e in entries if e]
+        """Rerank results using reranking API - handles homonymes via desc field."""
+        # Collect all homonymes, indexed by desc field for tracking
+        entries_by_desc: Dict[str, tuple] = {}  # desc -> (result_idx, entry)
+        entries_list: List[Dict[str, Any]] = []
 
-        combined_scores: Dict[int, float] = {}
+        for result_idx, result in enumerate(results):
+            word = result.get("word", "")
+            word_lower = word.lower()
+            if word_lower in self.base_engine.word_to_entry:
+                for entry in self.base_engine.word_to_entry[word_lower]:
+                    desc = entry.get("desc", "")
+                    entries_by_desc[desc] = (result_idx, entry)
+                    entries_list.append(entry)
 
-        for batch_idx in range(0, len(entries), batch_size):
-            batch = entries[batch_idx : batch_idx + batch_size]
+        if not entries_list:
+            return []
+
+        combined_scores: Dict[str, float] = {}
+
+        for batch_idx in range(0, len(entries_list), batch_size):
+            batch = entries_list[batch_idx : batch_idx + batch_size]
             documents = [format_entry_multilang(e) for e in batch]
 
             try:
@@ -100,21 +113,30 @@ class RerankedSearchEngine:
                 for item in rerank_results:
                     idx = item.get("index", 0) + batch_idx
                     score = item.get("relevance_score", 0)
-                    combined_scores[idx] = combined_scores.get(idx, 0) + score
+                    if idx < len(entries_list):
+                        desc = entries_list[idx].get("desc", "")
+                        combined_scores[desc] = score
             except Exception as e:
                 print(f"Reranking error: {e}")
                 break
 
-        sorted_indices = sorted(
-            combined_scores.keys(), key=lambda i: combined_scores[i], reverse=True
-        )
+        # Group by result, keep best homonyme per word
+        result_scores: Dict[int, float] = {}
+        result_best: Dict[int, Dict[str, Any]] = {}
+        for desc, score in combined_scores.items():
+            result_idx, entry = entries_by_desc[desc]
+            if result_idx not in result_scores or score > result_scores[result_idx]:
+                result_scores[result_idx] = score
+                result_best[result_idx] = entry
 
+        # Sort and return
+        sorted_indices = sorted(result_scores.keys(), key=lambda i: result_scores[i], reverse=True)
         reranked = []
-        for idx in sorted_indices:
-            if idx < len(results):
-                result = results[idx].copy()
-                result["rerank_score"] = combined_scores[idx]
-                result["word_type"] = get_word_type(entries[idx])
+        for result_idx in sorted_indices:
+            if result_idx < len(results):
+                result = results[result_idx].copy()
+                result["rerank_score"] = result_scores[result_idx]
+                result["word_type"] = get_word_type(result_best[result_idx])
                 reranked.append(result)
 
         return reranked
