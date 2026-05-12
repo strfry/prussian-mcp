@@ -65,9 +65,10 @@ security_settings = TransportSecuritySettings(
     allowed_hosts=[
         "127.0.0.1:*",
         "localhost:*",
+        "strfry.org:*",
         "strfry.org",
-    ],  # No port in Host header
-    allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "https://strfry.org"],
+    ],
+    allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "https://strfry.org", "https://strfry.org:*"],
 )
 mcp = FastMCP(
     "Prussian Dictionary",
@@ -513,8 +514,8 @@ if __name__ == "__main__":
         print(f"\nConfigure in Claude Web with:")
         print(f"  {{'type': 'sse', 'url': 'http://{args.host}:{args.port}/sse'}}")
 
-        # Run with SSE transport
-        mcp.run(transport="sse")
+        # Run with streamable-http transport (modern MCP protocol)
+        mcp.run(transport="streamable-http")
     else:
         print("Starting MCP server in local mode (stdio)")
         print(
