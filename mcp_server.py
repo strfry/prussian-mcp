@@ -365,12 +365,15 @@ def search_dictionary(
     query: str, top_k: int = 10, use_reranker: bool = True, filter_pgr: str = None
 ) -> list[dict[str, Any]]:
     """
-    Semantic search in the Prussian dictionary with optional reranking and PGR form filtering.
+    Semantic search in the Prussian dictionary.
+    Use this when you have a concept or modern language word and want to find 
+    the Prussian equivalent. Do NOT use for looking up known Prussian forms –
+    use lookup_prussian_word instead.
 
     Args:
         query: Search query in multiple languages (German, English, Lithuanian, Latvian, Polish, Russian)
         top_k: Number of results to return
-        use_reranker: Use reranker for better semantic ranking (slower but more accurate)
+        use_reranker: More accurate but slower. Use False for simple lookups.
         filter_pgr: Optional PGR filter for grammatical forms, e.g. "GEN.SG", "ACC.PL.MASC", "PRS.3.SG.IND"
 
     Returns:
@@ -423,12 +426,18 @@ def search_dictionary(
 def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
     """
     Look up a specific Prussian word (lemma or inflected form).
+    Use this when you already have a Prussian word and need its meaning or base form.
+    For a full sentence, call once per word – never pass the whole sentence.
 
-    Args:
-        word: Prussian word to look up
+    Workflow for translation FROM Prussian:
+     1. Split sentence into individual words
+     2. Call this tool once per word to get lemma + meaning
+     3. Call get_word_forms if you need the full paradigm
 
-    Returns:
-        List of matching entries with translations
+Args:
+    word: Single Prussian word (lemma or inflected form)
+    fuzzy: Set to True if exact lookup fails or word may have spelling variants.
+           Always retry with fuzzy=True before giving up.
     """
     return search_engine.lookup(word, fuzzy=fuzzy)
 
@@ -436,14 +445,13 @@ def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
 @mcp.tool()
 def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
     """
-    Get declension or conjugation forms for a Prussian lemma.
+    Get all declension or conjugation forms for a Prussian lemma.
+    Use this AFTER lookup_prussian_word has given you the base lemma.
+    Useful for translation INTO Prussian when you need a specific case or tense.
 
     Args:
-        lemma: Prussian lemma (base form)
-        filter: Optional PGR filter (e.g. 'GEN.PL', 'PRES.1.SG')
-
-    Returns:
-        List of entries with lemma, translations, and forms (one per homonym)
+        lemma: Prussian base form (from lookup_prussian_word result)
+        filter: Optional PGR filter e.g. "GEN.PL", "PRS.1.SG"
     """
     return search_engine.get_word_forms(lemma, filter_pgr=filter)
 
