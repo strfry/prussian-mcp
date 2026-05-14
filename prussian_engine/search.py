@@ -25,7 +25,7 @@ class SearchEngine:
         self.entries: List[Dict[str, Any]] = []
         self.embeddings: Optional[np.ndarray] = None
         self.word_to_entry: Dict[str, List[Dict[str, Any]]] = {}
-        self.form_to_lemma: Dict[str, str] = {}
+        self.form_to_lemma: Dict[str, List[str]] = {}
         self.form_to_pgr: Dict[str, List[str]] = {}
 
         self.embedding_client = EmbeddingClient()
@@ -69,8 +69,9 @@ class SearchEngine:
             for form, pgr in forms_pgr:
                 if form:
                     form_lower = form.lower()
-                    if form_lower not in self.form_to_lemma:
-                        self.form_to_lemma[form_lower] = lemma
+                    lemmas = self.form_to_lemma.setdefault(form_lower, [])
+                    if lemma not in lemmas:
+                        lemmas.append(lemma)
                     if form_lower not in self.form_to_pgr:
                         self.form_to_pgr[form_lower] = []
                     if pgr not in self.form_to_pgr[form_lower]:
@@ -250,11 +251,11 @@ class SearchEngine:
 
         # Check if it's an inflected form
         elif word_lower in self.form_to_lemma:
-            lemma = self.form_to_lemma[word_lower]
-            for entry in self.word_to_entry.get(lemma, []):
-                results.append(
-                    self._format_lookup_result(entry, matched_form=word_lower)
-                )
+            for lemma in self.form_to_lemma[word_lower]:
+                for entry in self.word_to_entry.get(lemma, []):
+                    results.append(
+                        self._format_lookup_result(entry, matched_form=word_lower)
+                    )
 
         # Macron-normalized lookup (always, not just fuzzy)
         if not results:
@@ -270,14 +271,15 @@ class SearchEngine:
 
             # Find all forms that match when normalized
             if not results:
-                for form, lemma in self.form_to_lemma.items():
+                for form, lemmas in self.form_to_lemma.items():
                     if self._normalize_macrons(form) == word_normalized:
-                        for entry in self.word_to_entry.get(lemma, []):
-                            result = self._format_lookup_result(
-                                entry, matched_form=word_lower
-                            )
-                            if result not in results:
-                                results.append(result)
+                        for lemma in lemmas:
+                            for entry in self.word_to_entry.get(lemma, []):
+                                result = self._format_lookup_result(
+                                    entry, matched_form=word_lower
+                                )
+                                if result not in results:
+                                    results.append(result)
 
             # Levenshtein distance fallback on normalized words (fuzzy only)
             if not results and fuzzy:
@@ -432,17 +434,11 @@ class SearchEngine:
         return None
 
     def _simplify_pgr(self, pgr_string: str) -> str:
-        """Simplify PGR by outputting only common features.
+        """Collapse a pipe-separated alternation when exactly one feature varies.
 
-        GEN.PL.MASC|GEN.PL.FEM|GEN.PL.NEUT → GEN.PL
-        NOM.SG.MASC|NOM.SG.FEM → NOM.SG
-        NOM.SG.MASC|GEN.PL.FEM → NOM.SG.MASC|GEN.PL.FEM (no simplification)
-
-        Args:
-            pgr_string: Pipe-separated PGR strings
-
-        Returns:
-            Simplified PGR string
+        GEN.PL.MASC|GEN.PL.FEM|GEN.PL.NEUT → GEN.PL  (only GENDER varies)
+        PST.SG.1.IND|PST.SG.2.IND|PST.SG.3.IND → PST.SG.IND  (only PERSON varies)
+        ACC.SG.FEM|NOM.PL.FEM → ACC.SG.FEM|NOM.PL.FEM  (CASE and NUMBER vary)
         """
         if not pgr_string or "|" not in pgr_string:
             return pgr_string
@@ -460,20 +456,20 @@ class SearchEngine:
         if not common_keys:
             return pgr_string
 
-        keys_to_remove = []
-        for key in common_keys:
-            values = set(f[key] for f in features_list if key in f)
-            if len(values) > 1:
-                keys_to_remove.append(key)
+        differing_keys = {
+            k for k in common_keys
+            if len({f[k] for f in features_list if k in f}) > 1
+        }
 
-        for key in keys_to_remove:
-            common_keys.discard(key)
-
-        if not common_keys:
+        if len(differing_keys) != 1:
             return pgr_string
 
-        common_features = {k: features_list[0][k] for k in common_keys}
-        return build_pgr(common_features)
+        kept_keys = common_keys - differing_keys
+        if not kept_keys:
+            return pgr_string
+
+        kept_features = {k: features_list[0][k] for k in kept_keys}
+        return build_pgr(kept_features)
 
     def _resolve_reference(self, target: str, ref_word: str) -> List[Dict[str, Any]]:
         """Resolve a reference to a lemma and return formatted results.
@@ -536,9 +532,17 @@ class SearchEngine:
 
         if matched_form and matched_form != entry.get("word", "").lower():
             result["matched_form"] = matched_form
-            pgrs = self.form_to_pgr.get(matched_form.lower(), [])
-            if pgrs:
-                pgr_string = "|".join(pgrs)
-                result["pgr"] = self._simplify_pgr(pgr_string)
+            matched_lower = matched_form.lower()
+            entry_pgrs = [
+                pgr
+                for form, pgr in extract_pgr_from_entry(entry)
+                if form.lower() == matched_lower
+            ]
+            if entry_pgrs:
+                seen = []
+                for pgr in entry_pgrs:
+                    if pgr not in seen:
+                        seen.append(pgr)
+                result["pgr"] = self._simplify_pgr("|".join(seen))
 
         return result
