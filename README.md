@@ -7,13 +7,13 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 ```
 ├── prussian_engine/       Python package (search, chat, tools)
 ├── mcp_server.py          MCP server (stdio + web modes, REST API, static files)
-├── data/                  Dictionary data (~10,000 entries)
+├── data/                  Dictionary data and wordlists
 ├── embeddings/            Pre-computed E5 embeddings
 ├── prompts/               System prompts for LLM
 ├── ui/                    Web interface (HTML/JS)
-├── scripts/               CLI tools and utilities
+├── scripts/               Data pipeline and development scripts
+├── tests/                 MCP server tests
 ├── .mcp.json              MCP client configuration
-├── archive/               Archived files
 └── venv/                  Virtual environment
 ```
 
@@ -74,13 +74,16 @@ python mcp_server.py --web
   ```
 - **Best for**: Everything - single server for MCP protocol, web UI, and REST API
 
-## CLI Testing
+## Development & Testing
 
-Test the engine directly without the web server:
+Test the engine directly:
 
 ```bash
 # Test semantic search
 python scripts/test_search.py
+
+# Test word lookup and reranking
+python scripts/test_reranked_search.py
 ```
 
 ## API
@@ -155,8 +158,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Target architecture and data flow
-- [Integration Complete](docs/INTEGRATION_COMPLETE.md) - E5 integration technical details
-- [Data Provenance](docs/DATA_PROVENANCE.md) - Dictionary data sources
+- [DATA_PROVENANCE.md](DATA_PROVENANCE.md) - Dictionary data sources and analysis
 
 ## Regenerating Embeddings
 

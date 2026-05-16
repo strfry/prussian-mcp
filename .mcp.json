@@ -1,9 +1,17 @@
 {
   "mcpServers": {
-    "prussian-dictionary": {
-      "command": "venv/bin/python",
+    "prussian-mcp": {
+      "command": ".venv/bin/python",
       "args": ["mcp_server.py"],
-      "cwd": "/home/strfry/projekte/prussian-mcp"
+      "cwd": "/home/strfry/projekte/prussian-mcp",
+      "env": {
+        "RERANK_BASE_URL": "http://localhost:8001/v3",
+        "EMBEDDING_MODEL": "Qwen3-Embedding-0.6B-int8-ov",
+        "RERANKER_MODEL": "BAAI/bge-reranker-large",
+        "QUERY_PREFIX": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+        "OPENAI_BASE_URL": "http://localhost:8001/v3",
+        "OPENAI_MODEL": "gpt-oss-20b-int4-ov"
+      }
     }
   }
 }

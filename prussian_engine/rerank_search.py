@@ -41,10 +41,12 @@ class RerankedSearchEngine:
     def __init__(self, use_reranker: bool = True):
         self.base_engine = SearchEngine()
         self.use_reranker = use_reranker
-        if RERANK_API_KEY:
+        if use_reranker:
+            if not RERANK_API_KEY:
+                raise ValueError("RERANK_API_KEY environment variable is required for reranking")
             self.rerank_client = EmbeddingClient()
         else:
-            raise ValueError("RERANK_API_KEY environment variable is required")
+            self.rerank_client = None
 
     async def search(
         self,
