@@ -17,6 +17,34 @@ from .pgr import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse
 class SearchEngine:
     """Semantic search engine using precomputed embeddings."""
 
+    # Prefix stripping rules: (prefix_string, rule_name) ordered longest-first
+    PREFIX_RULES: list = [
+        ("prei", "prei"),
+        ("pra", "pra"),
+        ("per", "per"),
+        ("sen", "sen"), ("san", "san"), ("su", "su"),
+        ("nī", "nī"), ("ni", "ni"), ("ne", "ne"),
+        ("pa", "pa"),
+        ("iz", "iz"),
+        ("en", "en"),
+        ("et", "et"), ("eb", "eb"),
+        ("au", "au"),
+    ]
+
+    # Orthographic transformation rules:
+    #   (rule_name, [(pattern, replacement, suffix_only), ...])
+    # suffix_only=True means only apply at word end
+    ORTHO_RULES: list = [
+        ("macron_normalize", [("ā", "a", False), ("ē", "e", False), ("ī", "i", False), ("ō", "o", False), ("ū", "u", False)]),
+        ("vowel_macron_shift", [("ī", "ē", False), ("ū", "ā", False), ("ū", "ō", False)]),
+        ("prothetic_w", [("und", "wund", False), ("āb", "wāb", False)]),
+        ("sibilant_onset", [("šl", "skl", False), ("šp", "sp", False)]),
+        ("consonant_cluster", [("šš", "ssj", False), ("č", "dž", False)]),
+        ("nertiks_vowel", [("lan", "lin", True), ("le", "la", False), ("je", "ja", False)]),
+        ("vowel_shift", [("bilin", "bilan", True)]),
+        ("diphthong_glide", [("ei", "jai", True), ("eis", "jais", True)]),
+    ]
+
     def __init__(self):
         """Initialize search engine by loading dictionary and embeddings."""
         self.entries: List[Dict[str, Any]] = []
@@ -77,6 +105,125 @@ class SearchEngine:
         print(
             f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
         )
+
+    def _exact_lookup(self, word: str) -> list:
+        """Look up a word exactly in lemma and form indices.
+
+        Returns:
+            List of formatted lookup results (empty if not found).
+        """
+        results = []
+
+        if word in self.word_to_entry:
+            for entry in self.word_to_entry[word]:
+                results.append(self._format_lookup_result(entry, matched_form=word))
+            return results
+
+        if word in self.form_to_lemma:
+            for lemma in self.form_to_lemma[word]:
+                for entry in self.word_to_entry.get(lemma, []):
+                    result = self._format_lookup_result(entry, matched_form=word)
+                    if result not in results:
+                        results.append(result)
+            return results
+
+        return results
+
+    def _try_prefix_rules(self, word: str, _depth: int = 0) -> list:
+        """Try stripping known prefixes and doing exact lookup on the root.
+
+        First match wins; results are annotated with method/rule_applied.
+        Composability: if exact on root fails, also tries ortho rules on root.
+        """
+        if _depth > 1:
+            return []
+        for prefix, rule_name in self.PREFIX_RULES:
+            if word.startswith(prefix) and len(word) > len(prefix):
+                root = word[len(prefix):]
+                results = self._exact_lookup(root)
+                if results:
+                    for r in results:
+                        r["method"] = "prefix_stripped"
+                        r["rule_applied"] = rule_name
+                    return results
+                # Composability: try ortho transforms on the root
+                results = self._try_ortho_rules(root, _depth + 1)
+                if results:
+                    for r in results:
+                        r["method"] = "prefix_stripped"
+                        r["rule_applied"] = rule_name
+                    return results
+        return []
+
+    def _macron_lookup(self, word: str) -> list:
+        """Full-index scan with macrons stripped (ā→a, ē→e, etc.).
+
+        Scans all lemmas and inflected forms for a normalized match.
+        """
+        results = []
+        word_normalized = self._normalize_macrons(word)
+
+        for lemma, entries in self.word_to_entry.items():
+            if self._normalize_macrons(lemma) == word_normalized:
+                for entry in entries:
+                    results.append(self._format_lookup_result(entry, matched_form=word))
+
+        if not results:
+            for form, lemmas in self.form_to_lemma.items():
+                if self._normalize_macrons(form) == word_normalized:
+                    for lemma in lemmas:
+                        for entry in self.word_to_entry.get(lemma, []):
+                            result = self._format_lookup_result(entry, matched_form=word)
+                            if result not in results:
+                                results.append(result)
+
+        return results
+
+    def _try_ortho_rules(self, word: str, _depth: int = 0) -> list:
+        """Apply orthographic transformations and try exact lookup.
+
+        First rule in ORTHO_RULES is macron_normalize (full-index scan).
+        Remaining rules generate candidate forms via pattern replacement.
+        First match wins; results are annotated with method/rule_applied.
+        Composability: if exact on candidate fails, also tries prefix on candidate.
+        """
+        if _depth > 1:
+            return []
+        for rule_name, patterns in self.ORTHO_RULES:
+            if rule_name == "macron_normalize":
+                results = self._macron_lookup(word)
+                if results:
+                    for r in results:
+                        r["method"] = "ortho_transform"
+                        r["rule_applied"] = rule_name
+                    return results
+            else:
+                for pattern, replacement, suffix_only in patterns:
+                    if suffix_only:
+                        if word.endswith(pattern):
+                            candidate = word[:-len(pattern)] + replacement
+                        else:
+                            continue
+                    else:
+                        if pattern not in word:
+                            continue
+                        candidate = word.replace(pattern, replacement)
+                    if candidate == word:
+                        continue
+                    results = self._exact_lookup(candidate)
+                    if results:
+                        for r in results:
+                            r["method"] = "ortho_transform"
+                            r["rule_applied"] = rule_name
+                        return results
+                    # Composability: try prefix stripping on the candidate
+                    results = self._try_prefix_rules(candidate, _depth + 1)
+                    if results:
+                        for r in results:
+                            r["method"] = "ortho_transform"
+                            r["rule_applied"] = rule_name
+                        return results
+        return []
 
     def _get_query_embedding(self, query_text: str) -> np.ndarray:
         """Encode query using embedding API."""
@@ -301,90 +448,73 @@ class SearchEngine:
 
         return structured
 
-    def lookup(self, prussian_word: str, fuzzy: bool = True) -> List[Dict[str, Any]]:
+    def lookup(self, prussian_word: str, fuzzy: bool = False, apply_rules: bool = True) -> List[Dict[str, Any]]:
         """
         Reverse lookup: Find Prussian word (lemma or inflected form).
 
         Args:
             prussian_word: Prussian word to look up
-            fuzzy: If True, also try macron-normalized lookup if exact match fails
+            fuzzy: If True, try Levenshtein distance fallback when nothing else matches
+            apply_rules: If True, try prefix stripping and orthographic rules
+                when exact lookup fails. Macron normalization is included as the
+                first orthographic rule.
 
         Returns:
-            List of matching entries with translations and forms
+            List of matching entries with translations, forms, and when
+            apply_rules=True: method and rule_applied fields.
         """
         word_lower = prussian_word.lower().strip()
         results = []
 
-        # Try exact match first
-        # Check if it's a lemma
-        if word_lower in self.word_to_entry:
-            for entry in self.word_to_entry[word_lower]:
-                results.append(self._format_lookup_result(entry, matched_form=word_lower))
+        # 1. Exact match (lemma or inflected form)
+        results = self._exact_lookup(word_lower)
+        if results and apply_rules:
+            for r in results:
+                r["method"] = "exact"
 
-        # Check if it's an inflected form
-        elif word_lower in self.form_to_lemma:
-            for lemma in self.form_to_lemma[word_lower]:
-                for entry in self.word_to_entry.get(lemma, []):
-                    results.append(
-                        self._format_lookup_result(entry, matched_form=word_lower)
-                    )
+        # 2. Prefix stripping rules
+        if not results and apply_rules:
+            results = self._try_prefix_rules(word_lower)
+            if results:
+                for r in results:
+                    r["matched_form"] = word_lower
 
-        # Macron-normalized lookup (always, not just fuzzy)
-        if not results:
+        # 3. Orthographic transformation rules (macron normalize is first)
+        if not results and apply_rules:
+            results = self._try_ortho_rules(word_lower)
+            if results:
+                for r in results:
+                    r["matched_form"] = word_lower
+
+        # 4. Levenshtein distance fallback (fuzzy only)
+        if not results and fuzzy:
             word_normalized = self._normalize_macrons(word_lower)
-
-            # Find all lemmata that match when normalized
+            candidates = []
             for lemma, entries in self.word_to_entry.items():
-                if self._normalize_macrons(lemma) == word_normalized:
+                lemma_norm = self._normalize_macrons(lemma)
+                dist = self._levenshtein_distance(word_normalized, lemma_norm)
+                if dist <= 2:
+                    score = self._fuzzy_score(word_normalized, lemma_norm, dist)
                     for entry in entries:
-                        results.append(
-                            self._format_lookup_result(entry, matched_form=word_lower)
-                        )
+                        candidates.append((score, dist, lemma, entry))
 
-            # Find all forms that match when normalized
-            if not results:
-                for form, lemmas in self.form_to_lemma.items():
-                    if self._normalize_macrons(form) == word_normalized:
-                        for lemma in lemmas:
-                            for entry in self.word_to_entry.get(lemma, []):
-                                result = self._format_lookup_result(
-                                    entry, matched_form=word_lower
-                                )
-                                if result not in results:
-                                    results.append(result)
+            candidates.sort(key=lambda x: (-x[0], x[1]))
+            top_candidates = candidates[:10]
 
-            # Levenshtein distance fallback on normalized words (fuzzy only)
-            if not results and fuzzy:
-                word_norm = word_normalized
-                candidates = []
-                for lemma, entries in self.word_to_entry.items():
-                    lemma_norm = self._normalize_macrons(lemma)
-                    dist = self._levenshtein_distance(word_norm, lemma_norm)
-                    if dist <= 2:
-                        score = self._fuzzy_score(word_norm, lemma_norm, dist)
-                        for entry in entries:
-                            candidates.append((score, dist, lemma, entry))
-
-                # Sort by fuzzy score first, then use reranker on top candidates
-                candidates.sort(key=lambda x: (-x[0], x[1]))
-                top_candidates = candidates[:10]
-
-                if self.reranker_available:
-                    # Use reranker to get better ordering
-                    formatted = [
-                        self._format_lookup_result(e, matched_form=word_lower)
-                        for _, _, _, e in top_candidates
-                    ]
-                    reranked = self._rerank_candidates(word_lower, formatted, top_k=5)
-                    results.extend(reranked)
-                else:
-                    # Fallback to fuzzy score
-                    for score, dist, lemma, entry in top_candidates[:5]:
-                        result = self._format_lookup_result(
-                            entry, matched_form=word_lower
-                        )
-                        if result not in results:
-                            results.append(result)
+            if self.reranker_available:
+                formatted = [
+                    self._format_lookup_result(e, matched_form=word_lower)
+                    for _, _, _, e in top_candidates
+                ]
+                reranked = self._rerank_candidates(word_lower, formatted, top_k=5)
+                results.extend(reranked)
+            else:
+                for score, dist, lemma, entry in top_candidates[:5]:
+                    result = self._format_lookup_result(
+                        entry, matched_form=word_lower
+                    )
+                    if result not in results:
+                        results.append(result)
 
         results = self._follow_references(results)
         return results
@@ -583,12 +713,14 @@ class SearchEngine:
         return results
 
     def _format_lookup_result(
-        self, entry: Dict[str, Any], matched_form: str = None
+        self, entry: Dict[str, Any], matched_form: str = None,
+        method: str = None, rule_applied: str = None,
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
         Sets matched_form and pgr when an inflected form is found.
         Always includes desc (provenance and cross-references) when present.
+        Includes method and rule_applied metadata when apply_rules is active.
         """
         translations = entry.get("translations", {})
 
@@ -614,6 +746,11 @@ class SearchEngine:
                     if pgr not in seen:
                         seen.append(pgr)
                 result["pgr"] = self._simplify_pgr("|".join(seen))
+
+        if method:
+            result["method"] = method
+        if rule_applied:
+            result["rule_applied"] = rule_applied
 
         desc = entry.get("desc", "")
         if desc:

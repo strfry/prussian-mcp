@@ -423,7 +423,7 @@ def search_dictionary(
 
 
 @mcp.tool()
-def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
+def lookup_prussian_word(word: str, fuzzy: bool = False, apply_rules: bool = True) -> list[dict[str, Any]]:
     """
     Look up a specific Prussian word (lemma or inflected form).
     Searches all form categories: indicative, subjunctive, optative, imperative, participles, declensions.
@@ -439,8 +439,12 @@ Args:
     word: Single Prussian word (lemma or inflected form)
     fuzzy: Set to True if exact lookup fails or word may have spelling variants.
            Always retry with fuzzy=True before giving up.
+    apply_rules: When True and exact lookup fails, tries prefix stripping
+           (ni-, pa-, pra-, etc.) and orthographic transformations
+           (macron shifts, sibilant variants, vowel alternations).
+           Results include method and rule_applied metadata.
     """
-    return search_engine.lookup(word, fuzzy=fuzzy)
+    return search_engine.lookup(word, fuzzy=fuzzy, apply_rules=apply_rules)
 
 
 @mcp.tool()
