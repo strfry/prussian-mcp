@@ -226,6 +226,7 @@ class SearchEngine:
                 "translations": translations,
                 "gender": entry.get("gender", ""),
                 "forms": categorized_forms,
+                "desc": entry.get("desc", ""),
             }
             if filter_pgr:
                 result["filtered_forms"] = filtered_forms
@@ -586,8 +587,8 @@ class SearchEngine:
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
-        Reference entries are formatted with desc only (no pgr).
-        Lemma entries with matched forms get pgr from form index.
+        Sets matched_form and pgr when an inflected form is found.
+        Always includes desc (provenance and cross-references) when present.
         """
         translations = entry.get("translations", {})
 
@@ -598,12 +599,6 @@ class SearchEngine:
 
         if entry.get("gender"):
             result["gender"] = entry["gender"]
-
-        desc = entry.get("desc", "")
-
-        if desc.startswith("↑"):
-            result["desc"] = desc
-            return result
 
         if matched_form and matched_form != entry.get("word", "").lower():
             result["matched_form"] = matched_form
@@ -619,5 +614,9 @@ class SearchEngine:
                     if pgr not in seen:
                         seen.append(pgr)
                 result["pgr"] = self._simplify_pgr("|".join(seen))
+
+        desc = entry.get("desc", "")
+        if desc:
+            result["desc"] = desc
 
         return result
