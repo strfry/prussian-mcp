@@ -27,7 +27,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_prussian_word",
-            "description": "Look up a Prussian word (lemma or inflected form) to verify its meaning. Returns pgr annotation (e.g. 'ACC.SG.MASC' or 'GEN.PL.MASC|ACC.SG.MASC' for ambiguous forms). Use when you already have a Prussian word and need its translation. NOT for finding Prussian words from other languages - use search_dictionary for that!",
+            "description": "Look up a Prussian word (lemma or inflected form) to verify its meaning. Searches all form categories including indicative, subjunctive, optative, imperative, participles, and declensions. Returns pgr annotation (e.g. 'ACC.SG.MASC' or 'GEN.PL.MASC|ACC.SG.MASC' for ambiguous forms). Use when you already have a Prussian word and need its translation. NOT for finding Prussian words from other languages - use search_dictionary for that!",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -49,7 +49,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_word_forms",
-            "description": "Get declension or conjugation forms for a Prussian lemma. Returns flat list with form and pgr fields. Use filter to get specific forms (e.g. 'GEN.PL' for genitive plural, 'PRES.1.SG' for present 1st singular).",
+            "description": "Get all declension or conjugation forms for a Prussian lemma. Returns structured forms by category: indicative, optative, subjunctive, imperative, participles, declension, adverb, and comparison. Use filter to get specific forms (e.g. 'GEN.PL' for genitive plural, 'PRS.1.SG' for present 1st singular).",
             "parameters": {
                 "type": "object",
                 "properties": {

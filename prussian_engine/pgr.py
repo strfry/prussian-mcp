@@ -1,6 +1,5 @@
 """Prussian Glossing Rules (PGR) - Parser and utilities for morphological feature notation."""
 
-import re
 from typing import Dict, List, Optional, Tuple
 
 CASE_MAP = {
@@ -480,6 +479,43 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
             }
 
             results.append((form_text, build_pgr(features)))
+
+    if forms.get("optative"):
+        opt_form = forms["optative"]
+        if opt_form and isinstance(opt_form, str):
+            features = {
+                "MOOD": "OPT",
+                "TENSE": "PRS",
+            }
+            results.append((opt_form, build_pgr(features)))
+
+    if forms.get("subjunctive"):
+        for form_item in forms["subjunctive"]:
+            pronoun = form_item.get("pronoun", "").lower()
+            form_text = form_item.get("form", "")
+
+            if not form_text:
+                continue
+
+            person, number = _parse_pronoun(pronoun)
+
+            features = {
+                "TENSE": "PRS",
+                "PERSON": person,
+                "NUMBER": number,
+                "MOOD": "SUBJ",
+            }
+
+            results.append((form_text, build_pgr(features)))
+
+    if forms.get("adverb"):
+        adv = forms["adverb"]
+        if isinstance(adv, dict):
+            for degree_key, pgr_degree in [("positive", "POS"), ("comparative", "COMP"), ("superlative", "SUP")]:
+                form_text = adv.get(degree_key, "")
+                if form_text:
+                    features = {"DEGREE": pgr_degree}
+                    results.append((form_text, build_pgr(features)))
 
     return results
 

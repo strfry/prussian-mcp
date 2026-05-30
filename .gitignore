@@ -8,14 +8,13 @@ corpus/synthetic/
 data/cache/
 data/*.json
 
-# Embeddings
-embeddings/
+# Embeddings (track jina/qwen variants, ignore default)
+embeddings/embeddings.*
 
 # Environment
 .env
 *.env
-env.local.sh
-env.hf.sh
+env.*.sh
 
 # Logs
 *.log

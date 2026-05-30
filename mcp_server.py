@@ -426,6 +426,7 @@ def search_dictionary(
 def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict[str, Any]]:
     """
     Look up a specific Prussian word (lemma or inflected form).
+    Searches all form categories: indicative, subjunctive, optative, imperative, participles, declensions.
     Use this when you already have a Prussian word and need its meaning or base form.
     For a full sentence, call once per word – never pass the whole sentence.
 
@@ -446,6 +447,7 @@ Args:
 def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
     """
     Get all declension or conjugation forms for a Prussian lemma.
+    Returns structured forms by category: indicative, optative, subjunctive, imperative, participles, declension, adverb, comparison.
     Use this AFTER lookup_prussian_word has given you the base lemma.
     Useful for translation INTO Prussian when you need a specific case or tense.
 
@@ -516,10 +518,10 @@ else:
 
 if __name__ == "__main__":
     if args.web:
-        print(f"Starting MCP server in web mode (SSE)")
+        print("Starting MCP server in web mode (SSE)")
         print(f"  Address: http://{args.host}:{args.port}")
         print(f"  SSE endpoint: http://{args.host}:{args.port}/sse")
-        print(f"\nConfigure in Claude Web with:")
+        print("\nConfigure in Claude Web with:")
         print(f"  {{'type': 'sse', 'url': 'http://{args.host}:{args.port}/sse'}}")
 
         # Run with streamable-http transport (modern MCP protocol)

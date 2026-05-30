@@ -10,7 +10,6 @@ EMBEDDINGS_DIR = PROJECT_ROOT / "embeddings"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 DICTIONARY_PATH = DATA_DIR / "prussian_dictionary.json"
-EMBEDDINGS_PATH = EMBEDDINGS_DIR / "embeddings"
 SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
 
 # Embedding & Reranking API Configuration
@@ -20,6 +19,11 @@ RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-embeddings-v5-text-small")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
+EMBEDDING_PREFIX=os.getenv("EMBEDDING_PREFIX", "embeddings")
+
+
+EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDING_PREFIX
+
 
 # Asymmetric search prefixes.
 # Defaults match Jina v3/v5 local-inference convention ("Query: " / "Document: ").
