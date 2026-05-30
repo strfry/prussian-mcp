@@ -386,6 +386,12 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
     Returns:
         List of (form_text, pgr_string) tuples
     """
+    def _split(form_text: str, pgr: str) -> list:
+        """Split slash-separated alternative forms, each with the same PGR."""
+        if " / " in form_text:
+            return [(alt.strip(), pgr) for alt in form_text.split(" / ")]
+        return [(form_text, pgr)]
+
     results = []
     forms = entry.get("forms", {})
     gender = entry.get("gender", "").lower()
@@ -407,8 +413,8 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                     elif gender in GENDER_MAP:
                         singular_features["GENDER"] = GENDER_MAP[gender]
 
-                    results.append(
-                        (case_data["singular"], build_pgr(singular_features))
+                    results.extend(
+                        _split(case_data["singular"], build_pgr(singular_features))
                     )
 
                 if case_data.get("plural"):
@@ -421,7 +427,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                     elif gender in GENDER_MAP:
                         plural_features["GENDER"] = GENDER_MAP[gender]
 
-                    results.append((case_data["plural"], build_pgr(plural_features)))
+                    results.extend(_split(case_data["plural"], build_pgr(plural_features)))
 
     if forms.get("indicative"):
         for mood_data in forms["indicative"]:
@@ -444,7 +450,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                     "MOOD": "IND",
                 }
 
-                results.append((form_text, build_pgr(features)))
+                results.extend(_split(form_text, build_pgr(features)))
 
     if forms.get("imperative"):
         for form_item in forms["imperative"]:
@@ -463,7 +469,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                 "MOOD": "IMP",
             }
 
-            results.append((form_text, build_pgr(features)))
+            results.extend(_split(form_text, build_pgr(features)))
 
     if forms.get("participles"):
         for pc_data in forms["participles"]:
@@ -478,7 +484,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                 "SUBTYPE": PC_TYPE_MAP.get(pc_type, "PS"),
             }
 
-            results.append((form_text, build_pgr(features)))
+            results.extend(_split(form_text, build_pgr(features)))
 
     if forms.get("optative"):
         opt_form = forms["optative"]
@@ -487,7 +493,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                 "MOOD": "OPT",
                 "TENSE": "PRS",
             }
-            results.append((opt_form, build_pgr(features)))
+            results.extend(_split(opt_form, build_pgr(features)))
 
     if forms.get("subjunctive"):
         for form_item in forms["subjunctive"]:
@@ -506,7 +512,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                 "MOOD": "SUBJ",
             }
 
-            results.append((form_text, build_pgr(features)))
+            results.extend(_split(form_text, build_pgr(features)))
 
     if forms.get("adverb"):
         adv = forms["adverb"]
@@ -515,7 +521,7 @@ def extract_pgr_from_entry(entry: Dict) -> List[Tuple[str, str]]:
                 form_text = adv.get(degree_key, "")
                 if form_text:
                     features = {"DEGREE": pgr_degree}
-                    results.append((form_text, build_pgr(features)))
+                results.extend(_split(form_text, build_pgr(features)))
 
     return results
 
