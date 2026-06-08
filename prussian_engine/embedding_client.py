@@ -46,7 +46,6 @@ class EmbeddingClient:
         payload = {
             "model": self.embedding_model,
             "input": texts,
-            "normalized": True,
         }
 
         with httpx.Client(timeout=120.0) as client:
@@ -69,7 +68,9 @@ class EmbeddingClient:
             embeddings = []
             for item in data["data"]:
                 vec = item["embedding"]
-                if not vec or not any(isinstance(v, (int, float)) and v != 0 for v in vec):
+                if not vec or not any(
+                    isinstance(v, (int, float)) and v != 0 for v in vec
+                ):
                     raise Exception(
                         f"Embedding API returned empty/null embedding vector "
                         f"(len={len(vec) if vec else 0}). "
@@ -109,8 +110,6 @@ class EmbeddingClient:
             "model": self.reranker_model,
             "query": query,
             "documents": documents,
-            "top_n": top_n,
-            "return_documents": return_documents,
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -123,5 +122,6 @@ class EmbeddingClient:
                     f"Rerank API error: {response.status_code} - {response.text}"
                 )
 
-            data = response.json()
-            return data.get("results", [])
+            body = response.json()
+            results = body.get("data") or body.get("results") or []
+            return results[:top_n]
