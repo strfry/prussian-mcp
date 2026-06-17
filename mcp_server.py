@@ -169,28 +169,75 @@ def grammar_inflection() -> str:
     return _load_prompt(GRAMMAR_INFLECTION_PATH)
 
 
+# ── Grammar Injection ──────────────────────────────────────────────────────────
+
+
+def _inject_grammar(grammar: bool | list[str] | str | None) -> str:
+    """Load grammar sources for injection after system prompt.
+
+    Args:
+        grammar: True for all sources, list of source names, or single source name.
+                 False/None for no grammar.
+
+    Returns:
+        Grammar text to append, or empty string.
+    """
+    if not grammar:
+        return ""
+
+    grammar_sources = {
+        "nertiks": PROMPTS_DIR / "gramatiki.md",
+        "reference": PROMPTS_DIR / "gramm.htm",
+        "inflection": PROMPTS_DIR / "tabula.html",
+    }
+
+    if isinstance(grammar, str):
+        grammar = [grammar]
+
+    if isinstance(grammar, bool) or grammar == ["all"]:
+        grammar = list(grammar_sources.keys())
+
+    parts = []
+    for key in grammar:
+        path = grammar_sources.get(key)
+        if path and path.exists():
+            content = _load_prompt(path)
+            parts.append(f"<grammar source=\"{key}\">\n{content}\n</grammar>")
+
+    if not parts:
+        return ""
+
+    return "\n\n\n".join(parts)
+
+
 # ── Streaming LLM Proxy ──────────────────────────────────────────────────────
 
 
-def _format_system_prompt(language: str = "de") -> str:
-    """Format system prompt with language code."""
+def _format_system_prompt(language: str = "de", grammar: bool | list[str] | str | None = None) -> str:
+    """Format system prompt with language code and optional grammar injection."""
     lang_code = "LT" if language == "lt" else "DE"
     content = _load_prompt(SYSTEM_PROMPT_PATH).replace("{lang_code}", lang_code)
-    return content.replace("{tools}", _build_tool_descriptions())
+    content = content.replace("{tools}", _build_tool_descriptions())
+
+    grammar_text = _inject_grammar(grammar)
+    if grammar_text:
+        content += "\n\n" + grammar_text
+
+    return content
 
 
 def _build_llm_kwargs(
-    messages, tools, temperature, max_tokens, language, *, stream=True
+    messages, tools, temperature, max_tokens, language, grammar=None, *, stream=True, tool_choice=None
 ):
     """Build kwargs for llm_client.chat.completions.create."""
-    system_content = _format_system_prompt(language)
+    system_content = _format_system_prompt(language, grammar=grammar)
     full_messages = [{"role": "system", "content": system_content}]
     full_messages.extend(messages)
     return dict(
         model=llm_model,
         messages=full_messages,
         tools=tools,
-        tool_choice="required" if tools else None,
+        tool_choice=tool_choice or ("required" if tools else None),
         temperature=temperature,
         max_tokens=max_tokens,
         stream=stream,
@@ -208,11 +255,13 @@ async def _stream_completions(
     temperature: float = 0.7,
     max_tokens: int = 2000,
     language: str = "de",
+    grammar: bool | list[str] | str | None = None,
+    tool_choice: str | None = None,
 ) -> AsyncIterator[bytes]:
     """Stream completions from LLM with tool call support."""
     try:
         stream = llm_client.chat.completions.create(
-            **_build_llm_kwargs(messages, tools, temperature, max_tokens, language)
+            **_build_llm_kwargs(messages, tools, temperature, max_tokens, language, grammar=grammar, tool_choice=tool_choice)
         )
 
         tool_calls_buffer: dict[int, dict] = {}
@@ -279,6 +328,7 @@ async def completions_endpoint(request):
         - temperature: Sampling temperature (float, default 0.7)
         - max_tokens: Maximum tokens (int, default 2000)
         - language: Response language 'de' or 'lt' (str, default 'de')
+        - grammar: Grammar sources to inject (bool, list, str, or null; default null)
 
     Response: SSE stream with events:
         - content_delta: {"content": string}
@@ -294,9 +344,10 @@ async def completions_endpoint(request):
         temperature = float(data.get("temperature", 0.7))
         max_tokens = int(data.get("max_tokens", 2000))
         language = data.get("language", "de")
+        grammar = data.get("grammar", None)
 
         return StreamingResponse(
-            _stream_completions(messages, tools, temperature, max_tokens, language),
+            _stream_completions(messages, tools, temperature, max_tokens, language, grammar=grammar),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -326,10 +377,12 @@ async def openai_completions_endpoint(request):
         max_tokens = int(data.get("max_tokens", 2000))
         language = data.get("language", "de")
         model = data.get("model", "prussian-chat")
+        grammar = data.get("grammar", None)
+        tool_choice = data.get("tool_choice", None)
 
         if data.get("stream", False):
             return StreamingResponse(
-                _stream_completions(messages, tools, temperature, max_tokens, language),
+                _stream_completions(messages, tools, temperature, max_tokens, language, grammar=grammar, tool_choice=tool_choice),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -340,7 +393,7 @@ async def openai_completions_endpoint(request):
 
         response = llm_client.chat.completions.create(
             **_build_llm_kwargs(
-                messages, tools, temperature, max_tokens, language, stream=False
+                messages, tools, temperature, max_tokens, language, grammar=grammar, stream=False, tool_choice=tool_choice
             )
         )
 
