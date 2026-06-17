@@ -144,26 +144,26 @@ def final(language: str = "de") -> str:
     return _render_prompt(FINAL_PROMPT_PATH, language)
 
 
-# ── Grammar Prompts ─────────────────────────────────────────────────────────
+# ── Grammar Resources ─────────────────────────────────────────────────────────
 
 GRAMMAR_NERTIKS_PATH = PROMPTS_DIR / "gramatiki.md"
 GRAMMAR_REFERENCE_PATH = PROMPTS_DIR / "gramm.htm"
 GRAMMAR_INFLECTION_PATH = PROMPTS_DIR / "tabula.html"
 
 
-@mcp.prompt()
+@mcp.resource("grammar://nertiks")
 def grammar_nertiks() -> str:
     """Nertiks' Grammatik – Ausführliche Grammatikregeln auf Polnisch (Orthografie, Verbkonjugation, Numerale, Adverbien)."""
     return _load_prompt(GRAMMAR_NERTIKS_PATH)
 
 
-@mcp.prompt()
+@mcp.resource("grammar://reference")
 def grammar_reference() -> str:
     """Donelaitis-Referenz – Vollständige Grammatikreferenz auf Prußisch/Litauisch (Phonetik, Morphologie, Syntax)."""
     return _load_prompt(GRAMMAR_REFERENCE_PATH)
 
 
-@mcp.prompt()
+@mcp.resource("grammar://inflection")
 def grammar_inflection() -> str:
     """Donelaitis-Flexionstabellen – Sämtliche Deklinations- und Konjugationsparadigmen (Latein/Prußisch)."""
     return _load_prompt(GRAMMAR_INFLECTION_PATH)
