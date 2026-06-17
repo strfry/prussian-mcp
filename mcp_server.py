@@ -159,13 +159,13 @@ def grammar_nertiks() -> str:
 
 @mcp.resource("grammar://reference")
 def grammar_reference() -> str:
-    """Donelaitis-Referenz – Vollständige Grammatikreferenz auf Prußisch/Litauisch (Phonetik, Morphologie, Syntax)."""
+    """Donelaitis-Referenz – Vollständige Grammatikreferenz auf Prußisch (Phonetik, Morphologie, Syntax)."""
     return _load_prompt(GRAMMAR_REFERENCE_PATH)
 
 
 @mcp.resource("grammar://inflection")
 def grammar_inflection() -> str:
-    """Donelaitis-Flexionstabellen – Sämtliche Deklinations- und Konjugationsparadigmen (Latein/Prußisch)."""
+    """Donelaitis-Flexionstabellen – Sämtliche Deklinations- und Konjugationsparadigmen (Prußisch)."""
     return _load_prompt(GRAMMAR_INFLECTION_PATH)
 
 
