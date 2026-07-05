@@ -19,7 +19,7 @@ RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-embeddings-v5-text-small")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
-EMBEDDING_PREFIX=os.getenv("EMBEDDING_PREFIX", "embeddings")
+EMBEDDING_PREFIX=os.getenv("EMBEDDING_PREFIX", "embeddings_voyage")
 
 
 EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDING_PREFIX
