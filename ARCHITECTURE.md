@@ -44,8 +44,8 @@ prussian-dictionary/
 
 ## Daten
 
-### Wörterbuch (data/prussian_dictionary.json)
-- ~10.172 Einträge
+### Wörterbuch (data/twanksta_entries.json)
+- ~10.737 Einträge (via Release-Asset von strfry/prussian-corpus)
 - Felder: word, paradigm, gender, desc, translations, forms
 - Übersetzungen: miks (DE), engl (EN), leit (LT), lett (Lettisch), pols (Polnisch), mask (Russisch)
 - Wichtig: Einträge ohne translations sind Formen/Verweise auf Hauptlemmas
@@ -69,7 +69,7 @@ Das Herzstück – unabhängig vom Webserver importierbar für CLI-Tools.
 
 #### `config.py`
 - Liest Env-Variablen: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`
-- Datenpfade: `data/prussian_dictionary.json`, `embeddings/`
+- Datenpfade: `data/twanksta_entries.json`, `embeddings/`
 
 #### `search.py`
 - Lädt vorberechnete E5-Embeddings beim Start
@@ -148,7 +148,7 @@ OPENAI_MODEL=...        # Modellname (z.B. gpt-oss-20b-int4-ov)
 ```
 
 Datenpfade hardcoded:
-- `data/prussian_dictionary.json`
+- `data/twanksta_entries.json`
 - `embeddings/`
 
 ## Offene Punkte

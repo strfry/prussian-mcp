@@ -9,7 +9,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 EMBEDDINGS_DIR = PROJECT_ROOT / "embeddings"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
-DICTIONARY_PATH = DATA_DIR / "prussian_dictionary.json"
+DICTIONARY_PATH = DATA_DIR / "twanksta_entries.json"
 SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
 
 # Embedding & Reranking API Configuration
