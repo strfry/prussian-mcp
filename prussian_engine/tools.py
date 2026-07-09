@@ -48,6 +48,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "fsg_check",
+            "description": "Parse Prussian text with the FST/CG3 grammar pipeline (FSG/CG check). Returns a CoNLL-U dependency analysis (rendered as a dependency tree in the chat UI). Use to check grammar/agreement of a Prussian sentence, NOT for dictionary lookups.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Prussian sentence(s) to analyze (1..n sentences, e.g. 'Labban dēinan!')",
+                    }
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_word_forms",
             "description": "Get all declension or conjugation forms for a Prussian lemma. Returns structured forms by category: indicative, optative, subjunctive, imperative, participles, declension, adverb, and comparison. Use filter to get specific forms (e.g. 'GEN.PL' for genitive plural, 'PRS.1.SG' for present 1st singular).",
             "parameters": {

@@ -13,6 +13,7 @@ from openai import OpenAI
 from starlette.responses import Response, StreamingResponse, FileResponse
 
 import prussian_engine
+from prussian_engine.fsg_check import run_fsg_check
 from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -538,6 +539,23 @@ def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
         filter: Optional PGR filter e.g. "GEN.PL", "PRS.1.SG"
     """
     return search_engine.get_word_forms(lemma, filter_pgr=filter)
+
+
+@mcp.tool()
+def fsg_check(text: str) -> str:
+    """
+    Parse Prussian text with the FST/CG3 grammar pipeline (FSG/CG check)
+    and return a CoNLL-U dependency analysis.
+
+    Args:
+        text: Prussian sentence(s) to analyze (one or more sentences)
+
+    Returns:
+        CoNLL-U (10 tab-separated columns, one block per sentence, blank
+        line between sentences) with rule provenance in MISC (Rule=,
+        AgrParent=). The chat frontend renders this as a dependency tree.
+    """
+    return run_fsg_check(text)
 
 
 # ── Static Files ────────────────────────────────────────────────────────────────

@@ -37,3 +37,10 @@ PASSAGE_PREFIX = os.getenv("PASSAGE_PREFIX", "Document: ")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v3")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "eurollm-22b-instruct-int4")
+
+# FSG/CG check: path to the prussian-fst checkout whose
+# fst/scripts/cg3_pipeline.py runs the FST→CG3→CoNLL-U pipeline.
+# Default: sibling checkout next to this repo.
+PRUSSIAN_FST_DIR = Path(
+    os.getenv("PRUSSIAN_FST_DIR", str(PROJECT_ROOT.parent / "prussian-fst"))
+)

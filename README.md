@@ -48,10 +48,11 @@ python mcp_server.py
 ```
 - **Transport**: stdio (pure MCP protocol)
 - **No LLM needed** - just dictionary tools
-- 3 MCP tools available:
+- 4 MCP tools available:
   - `search_dictionary` - Semantic search
   - `lookup_prussian_word` - Word lookup
   - `get_word_forms` - Declensions/conjugations
+  - `fsg_check` - FSG/CG grammar check (CoNLL-U dependency analysis)
 - **Configure**: `.mcp.json` (already set up)
 - **Best for**: Local development with Claude Code/Desktop
 
@@ -137,6 +138,14 @@ Features:
 - `search_dictionary(query, top_k)` - Semantic search (German/English → Prussian)
 - `lookup_prussian_word(word)` - Lookup Prussian word (Prussian → German/English)
 - `get_word_forms(lemma)` - Get declensions/conjugations
+- `fsg_check(text)` - Parse Prussian text with the FST/CG3 pipeline from
+  [`prussian-fst`](https://github.com/strfry/prussian-fst); returns CoNLL-U
+  (one block per sentence) that the chat UI renders as a dependency tree.
+  MISC carries rule provenance (`Rule=<name,…>` from named CG3 rules via
+  `vislcg3 --trace`, `AgrParent=<id>` from the agreement `SETPARENT` layer).
+  Requires a built prussian-fst checkout (`fst/build/base.fst`) plus
+  `vislcg3`/`hfst-flookup` on PATH; location via `PRUSSIAN_FST_DIR`
+  (default: sibling directory `../prussian-fst`).
 
 ## Architecture
 
