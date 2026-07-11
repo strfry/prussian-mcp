@@ -13,7 +13,6 @@ Requires ``vislcg3`` and ``hfst-flookup`` on PATH and a built
 """
 
 import subprocess
-import sys
 
 from .config import PRUSSIAN_FST_DIR
 
@@ -21,6 +20,15 @@ PIPELINE = PRUSSIAN_FST_DIR / "fst" / "scripts" / "cg3_pipeline.py"
 
 # Guard against runaway inputs — the tool is meant for a few sentences.
 MAX_TEXT_LEN = 4000
+
+
+def _pipeline_cmd(*extra_args: str) -> list[str]:
+    """Build argv that runs the pipeline inside prussian-fst's venv."""
+    return [
+        "uv", "run", "--directory", str(PRUSSIAN_FST_DIR),
+        str(PIPELINE),
+        *extra_args,
+    ]
 
 
 def run_fsg_check(text: str, timeout: float = 60.0) -> str:
@@ -44,7 +52,7 @@ def run_fsg_check(text: str, timeout: float = 60.0) -> str:
         )
 
     proc = subprocess.run(
-        [sys.executable, str(PIPELINE), "--text", "-", "--conllu", "--trace"],
+        _pipeline_cmd("--text", "-", "--conllu", "--trace"),
         input=text,
         capture_output=True,
         text=True,

@@ -7,4 +7,5 @@ requires-python = "==3.12"
 dependencies = [
     "numpy>=2.5.1",
     "openai>=2.45.0",
+    "pyhfst>=1.4.0",
 ]
