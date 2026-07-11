@@ -14,6 +14,7 @@ from starlette.responses import Response, StreamingResponse, FileResponse
 
 import prussian_engine
 from prussian_engine.fsg_check import run_fsg_check
+from prussian_engine.validate import run_validate
 from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -556,6 +557,36 @@ def fsg_check(text: str) -> str:
         AgrParent=). The chat frontend renders this as a dependency tree.
     """
     return run_fsg_check(text)
+
+
+@mcp.tool()
+def validate_prussian(text: str) -> dict:
+    """
+    Grammar-check Prussian text with the CG3 validator (three-valued verdict).
+    Use this to judge whether a generated/written Prussian sentence is
+    well-formed; use fsg_check when you want the full dependency analysis.
+
+    Args:
+        text: Prussian sentence(s) to validate (one or more sentences)
+
+    Returns:
+        {overall_status, sentences: [{sent_id, text, status, violations,
+        coverage}]} where status is one of:
+        - violations_found: a grammar rule flagged an error (violations
+          carry rule id, token index/form, severity error|warning, message)
+        - verified_in_coverage: no flags AND the analysis is trustworthy
+          (no unknown words, no reading collapse, low residual ambiguity,
+          at least one applicable check)
+        - out_of_coverage: the validator cannot judge this sentence
+          (coverage.reasons: oov / collapsed / no_applicable_checks /
+          residual_ambiguity)
+
+        IMPORTANT: out_of_coverage does NOT mean the sentence is correct —
+        never treat it as a pass. Only verified_in_coverage is a positive
+        signal. severity=warning flags (adjective agreement, PP nominative)
+        are often loanword paradigm gaps rather than true errors.
+    """
+    return run_validate(text)
 
 
 # ── Static Files ────────────────────────────────────────────────────────────────

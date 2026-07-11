@@ -65,6 +65,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "validate_prussian",
+            "description": "Grammar-check Prussian text with the CG3 validator. Returns a three-valued verdict per sentence: violations_found (rule violations with token, severity, message), verified_in_coverage (clean AND trustworthy analysis), or out_of_coverage (cannot judge: unknown words, ambiguity, no applicable checks). IMPORTANT: out_of_coverage does NOT mean correct — only verified_in_coverage is a positive signal. Use to check a candidate sentence before presenting it; use fsg_check for the full dependency tree.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Prussian sentence(s) to validate (1..n sentences, e.g. 'As pūwa sen laīwan.')",
+                    }
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_word_forms",
             "description": "Get all declension or conjugation forms for a Prussian lemma. Returns structured forms by category: indicative, optative, subjunctive, imperative, participles, declension, adverb, and comparison. Use filter to get specific forms (e.g. 'GEN.PL' for genitive plural, 'PRS.1.SG' for present 1st singular).",
             "parameters": {
