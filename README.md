@@ -38,6 +38,33 @@ Das Grammatik-Tool (`validate_prussian`, dreiwertige Prüfung, optional
 mit CoNLL-U-Dependenzanalyse) läuft in-process (pyhfst); fehlen
 Artefakte, meldet der Server beim Start die konkreten make-Kommandos.
 
+### Deployment (Server)
+
+Beide Repos nebeneinander auschecken — die Build-Artefakte sind NICHT
+im Git und müssen einmalig auf dem Zielsystem gebaut werden:
+
+```bash
+git clone <...>/prussian-fst
+git clone <...>/prussian-mcp
+
+# 1. Artefakte bauen (braucht hfst-lexc/hfst-xfst + cg-comp;
+#    zur Laufzeit wird nur noch cg-proc gebraucht, Lookup ist pyhfst)
+make -C prussian-fst/fst all cg3-sets cg3-check
+
+# 2. venv verdrahten (installiert prussian_fst editierbar aus ../prussian-fst)
+cd prussian-mcp
+uv sync
+
+# 3. starten
+.venv/bin/python mcp_server.py        # stdio; --web für SSE/HTTP
+```
+
+Liegt der prussian-fst-Checkout woanders: Pfad in `pyproject.toml`
+unter `[tool.uv.sources]` anpassen und `uv sync` erneut ausführen.
+Fehlt etwas (Paket nicht gesynct, Artefakte nicht gebaut), startet der
+Server trotzdem — die Wörterbuch-Tools laufen, und der Healthcheck
+bzw. `validate_prussian` melden die konkrete Abhilfe.
+
 ### 2. Configure LLM (Optional)
 
 Set environment variables for your LLM endpoint:

@@ -7,12 +7,10 @@ non-empty) — the input-validation tests run regardless.
 import json
 import unittest
 
-from prussian_fst import api as fst_api
-
 from prussian_engine.fsg_check import (MAX_TEXT_LEN, check_fsg_pipeline,
-                                       run_validate)
+                                       fst_api, run_validate)
 
-ARTIFACTS_MISSING = bool(fst_api.check_artifacts())
+ARTIFACTS_MISSING = fst_api is None or bool(fst_api.check_artifacts())
 
 
 class TestInputValidation(unittest.TestCase):

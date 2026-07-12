@@ -21,7 +21,21 @@ make-Kommandos, wenn etwas fehlt.
 import json
 import subprocess
 
-from prussian_fst import api as fst_api
+# Guarded Import: fehlt das Paket (venv nicht gesynct oder Checkout
+# nicht am Pfad aus pyproject [tool.uv.sources]), soll der Server
+# trotzdem starten — die Wörterbuch-Tools funktionieren ohne FST;
+# der Healthcheck und das Tool selbst melden dann die Abhilfe.
+try:
+    from prussian_fst import api as fst_api
+    _IMPORT_ERROR = None
+except ImportError as e:
+    fst_api = None
+    _IMPORT_ERROR = (
+        f"prussian_fst nicht importierbar ({e}) — im prussian-mcp-"
+        "Checkout `uv sync` ausführen; der prussian-fst-Checkout muss "
+        "am Pfad aus pyproject [tool.uv.sources] liegen "
+        "(Default: ../prussian-fst)."
+    )
 
 # Guard against runaway inputs — the tool is meant for a few sentences.
 MAX_TEXT_LEN = 4000
@@ -68,6 +82,8 @@ def run_validate(text: str, include_conllu: bool = False) -> str:
     overall.status = schlechtestes Satz-Urteil (violations_found >
     out_of_coverage > verified_in_coverage).  Mit include_conllu
     bekommt jeder Satz sein "conllu"-Feld (Dependenzanalyse)."""
+    if fst_api is None:
+        raise RuntimeError(_IMPORT_ERROR)
     text = _check_text(text)
     sentences = _translate_errors(fst_api.validate, text,
                                   conllu=include_conllu,
@@ -88,6 +104,8 @@ def check_fsg_pipeline() -> tuple[bool, str]:
 
     Returns ``(ok, message)`` — never raises.  Wärmt bei Erfolg zugleich
     den pyhfst-Transducer-Cache vor."""
+    if fst_api is None:
+        return False, f"FST/CG3-Pipeline nicht bereit: {_IMPORT_ERROR}"
     problems = fst_api.check_artifacts()
     if problems:
         return False, ("FST/CG3-Pipeline nicht bereit:\n  "
