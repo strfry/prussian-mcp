@@ -159,6 +159,9 @@ class SearchEngine:
         """Full-index scan with macrons stripped (ā→a, ē→e, etc.).
 
         Scans all lemmas and inflected forms for a normalized match.
+        When an inflected form is found, the dictionary form (with
+        original macrons) is passed as ``matched_form`` so that the
+        result includes the correct ``form`` and ``pgr`` fields.
         """
         results = []
         word_normalized = self._normalize_macrons(word)
@@ -173,7 +176,9 @@ class SearchEngine:
                 if self._normalize_macrons(form) == word_normalized:
                     for lemma in lemmas:
                         for entry in self.word_to_entry.get(lemma, []):
-                            result = self._format_lookup_result(entry, matched_form=word)
+                            result = self._format_lookup_result(
+                                entry, matched_form=form
+                            )
                             if result not in results:
                                 results.append(result)
 
@@ -718,13 +723,14 @@ class SearchEngine:
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
-        Sets matched_form and pgr when an inflected form is found.
-        Always includes desc (provenance and cross-references) when present.
-        Includes method and rule_applied metadata when apply_rules is active.
+        Always includes ``pgr`` when a form match is found (inflected or
+        lemma).  Includes ``form`` for the inflected standard form
+        (dictionary form) when it differs from the lemma.  Includes
+        ``method`` / ``rule_applied`` metadata when apply_rules is active.
         """
         translations = entry.get("translations", {})
 
-        result = {
+        result: Dict[str, Any] = {
             "word": entry.get("word", ""),
             "translations": translations,
         }
@@ -732,9 +738,11 @@ class SearchEngine:
         if entry.get("gender"):
             result["gender"] = entry["gender"]
 
-        if matched_form and matched_form != entry.get("word", "").lower():
-            result["matched_form"] = matched_form
+        if matched_form:
             matched_lower = matched_form.lower()
+            lemma_lower = entry.get("word", "").lower()
+
+            # Find all matching forms with their PGR tags
             entry_pgrs = [
                 pgr
                 for form, pgr in extract_pgr_from_entry(entry)
@@ -746,6 +754,10 @@ class SearchEngine:
                     if pgr not in seen:
                         seen.append(pgr)
                 result["pgr"] = self._simplify_pgr("|".join(seen))
+
+            # Show inflected form when it differs from lemma
+            if matched_lower != lemma_lower:
+                result["form"] = matched_form
 
         if method:
             result["method"] = method

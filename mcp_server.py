@@ -12,7 +12,7 @@ from openai import OpenAI
 from starlette.responses import Response, StreamingResponse
 
 import prussian_engine
-from prussian_engine.fsg_check import run_validate, check_fsg_pipeline
+from prussian_engine.fsg_check import check_fsg_pipeline
 from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -425,6 +425,8 @@ async def openai_completions_endpoint(request):
 
 # ── MCP Tools ────────────────────────────────────────────────────────────────
 
+from prussian_mcp.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
+
 
 @mcp.tool()
 def search_dictionary(
@@ -447,45 +449,17 @@ def search_dictionary(
     """
     global reranked_engine
 
-    if use_reranker:
-        import asyncio
+    if use_reranker and reranked_engine is None:
+        reranked_engine = RerankedSearchEngine(use_reranker=True)
 
-        if reranked_engine is None:
-            reranked_engine = RerankedSearchEngine(use_reranker=True)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    reranked_engine.search(query, top_k=top_k, rerank_candidates=100),
-                )
-                results = future.result()
-        else:
-            results = asyncio.run(
-                reranked_engine.search(query, top_k=top_k, rerank_candidates=100)
-            )
-    else:
-        results = search_engine.query(query, top_k)
-
-    output = []
-    for r in results:
-        entry = {"word": r["word"], "translations": r["translations"]}
-        if filter_pgr:
-            forms_data = search_engine.get_word_forms(r["word"], filter_pgr=filter_pgr)
-            if isinstance(forms_data, list):
-                for fd in forms_data:
-                    if fd.get("forms"):
-                        entry["forms"] = fd["forms"]
-                        entry["gender"] = fd.get("gender", "")
-                        break
-        output.append(entry)
-    return output
+    return search_tool(
+        search_engine,
+        query,
+        top_k=top_k,
+        use_reranker=use_reranker,
+        filter_pgr=filter_pgr,
+        reranked_engine=reranked_engine if use_reranker else None,
+    )
 
 
 @mcp.tool()
@@ -510,7 +484,7 @@ Args:
            (macron shifts, sibilant variants, vowel alternations).
            Results include method and rule_applied metadata.
     """
-    return search_engine.lookup(word, fuzzy=fuzzy, apply_rules=apply_rules)
+    return lookup_tool(search_engine, word, fuzzy=fuzzy, apply_rules=apply_rules)
 
 
 @mcp.tool()
@@ -525,7 +499,7 @@ def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
         lemma: Prussian base form (from lookup_prussian_word result)
         filter: Optional PGR filter e.g. "GEN.PL", "PRS.1.SG"
     """
-    return search_engine.get_word_forms(lemma, filter_pgr=filter)
+    return wordforms_tool(search_engine, lemma, filter_pgr=filter)
 
 
 @mcp.tool()
@@ -561,7 +535,7 @@ def validate_prussian(text: str, include_conllu: bool = False) -> str:
       is reliable; "warning" (adjective agreement, nominative in PP)
       is often a loanword paradigm gap rather than a real error.
     """
-    return run_validate(text, include_conllu=include_conllu)
+    return validate_tool(text, include_conllu=include_conllu)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

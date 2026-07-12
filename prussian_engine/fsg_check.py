@@ -13,6 +13,11 @@ Ein Payload (das einzige Grammatik-Tool, validate_prussian):
       Block (Rule=/AgrParent=-Provenienz in MISC) — gleicher
       Pipeline-Lauf, kein zweiter Durchlauf.
 
+  validate_with_corrections(text, include_conllu=False)
+    → wie run_validate(), aber korrigiert eindeutige OOV-Wörter über
+      Zwei-Stufen-Lookup (ortho → fuzzy) und fügt spelling_corrections
+      zum Resultat hinzu.
+
 Voraussetzungen (nicht auto-gebaut): cg-proc im PATH und die Artefakte
 im prussian-fst-Checkout — check_fsg_pipeline() nennt die konkreten
 make-Kommandos, wenn etwas fehlt.
@@ -97,6 +102,97 @@ def run_validate(text: str, include_conllu: bool = False) -> str:
         },
         "sentences": sentences,
     }, ensure_ascii=False, indent=2)
+
+
+# ── OOV-Korrektur (Zwei-Stufen-Lookup) ───────────────────────────────────────
+
+_engine = None
+
+
+def _get_engine():
+    """Lazy-loaded SearchEngine Singleton."""
+    global _engine
+    if _engine is None:
+        from .search import SearchEngine
+        _engine = SearchEngine()
+    return _engine
+
+
+def _find_correction(word: str) -> dict | None:
+    """Suche eine eindeutige Korrektur für ein OOV-Wort.
+
+    Zwei Stufen:
+      1. Ortho-Layer (prefix + ortho-Regeln, inkl. Macron-Normalisierung)
+      2. Fuzzy (Levenshtein)
+
+    Rückgabe: {original, corrected, method, certain} oder None.
+    Zeigt die Dictionary-Form (nicht Lemma) als Korrektur.
+    """
+    engine = _get_engine()
+
+    def _pick(candidates):
+        c = candidates[0]
+        # Bevorzuge inflected form über Lemma
+        corrected = c.get("form") or c["word"]
+        return {"original": word, "corrected": corrected,
+                "method": c.get("method", "ortho"), "certain": True}
+
+    # Stufe 1: ortho layer (kein fuzzy)
+    candidates = engine.lookup(word, fuzzy=False)
+    if len(candidates) == 1:
+        return _pick(candidates)
+    if len(candidates) > 1:
+        return None  # mehrdeutig
+
+    # Stufe 2: fuzzy (Levenshtein)
+    candidates = engine.lookup(word, fuzzy=True)
+    if len(candidates) == 1:
+        c = candidates[0]
+        corrected = c.get("form") or c["word"]
+        return {"original": word, "corrected": corrected,
+                "method": "fuzzy", "certain": False}
+    return None  # mehrdeutig oder kein Treffer
+
+
+def validate_with_corrections(text: str, include_conllu: bool = False) -> str:
+    """Grammatikprüfung mit automatischer OOV-Korrektur.
+
+    Wie ``run_validate()``, aber korrigiert eindeutige OOV-Wörter über
+    den Zwei-Stufen-Lookup (ortho → fuzzy) und validiert den
+    korrigierten Satz erneut.  Korrekturen erscheinen als
+    ``spelling_corrections`` im JSON-Output.
+    """
+    raw = run_validate(text, include_conllu=include_conllu)
+    result = json.loads(raw)
+
+    # OOV-Wörter aus allen Sätzen sammeln
+    oov_words = []
+    for s in result.get("sentences", []):
+        for oov in s.get("coverage", {}).get("oov", []):
+            form = oov.get("form", "")
+            if form and form not in oov_words:
+                oov_words.append(form)
+
+    if not oov_words:
+        return raw
+
+    # Korrekturen suchen
+    corrections = []
+    corrected_text = text
+    for word in oov_words:
+        c = _find_correction(word)
+        if c:
+            corrections.append(c)
+            corrected_text = corrected_text.replace(word, c["corrected"])
+
+    if not corrections:
+        return raw
+
+    # Korrigierten Satz neu validieren
+    raw2 = run_validate(corrected_text, include_conllu=include_conllu)
+    result2 = json.loads(raw2)
+    result2["spelling_corrections"] = corrections
+    return json.dumps(result2, ensure_ascii=False, indent=2)
 
 
 def check_fsg_pipeline() -> tuple[bool, str]:

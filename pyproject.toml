@@ -19,7 +19,11 @@ dependencies = [
 remote = ["mcp-haystack>=1.3"]
 
 [project.scripts]
-prussian-agent = "prussian_mcp.cli:main"
+agent = "prussian_mcp.cli:main"
+validate = "prussian_mcp.tools.validate:main"
+search = "prussian_mcp.tools.search:main"
+lookup = "prussian_mcp.tools.lookup:main"
+wordforms = "prussian_mcp.tools.wordforms:main"
 
 [build-system]
 requires = ["hatchling>=1.21"]

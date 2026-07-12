@@ -85,9 +85,9 @@ def _simplify_optional_strings(schema: dict) -> None:
 def build_local_toolset(engine=None) -> list:
     """Build the four in-process Haystack tools.
 
-    Imports of ``SearchEngine`` and ``run_validate`` happen here (not at
-    module top) so the package stays importable without
-    ``prussian-fst`` and so env vars are read at the right time.
+    Imports of ``SearchEngine`` happen here (not at module top) so the
+    package stays importable without ``prussian-fst`` and so env vars
+    are read at the right time.
 
     Args:
         engine: optional ``SearchEngine`` instance.  If ``None`` a fresh
@@ -99,12 +99,13 @@ def build_local_toolset(engine=None) -> list:
         pruned from their JSON schemas (models that emit ``"true"``
         strings would otherwise HTTP-400 some providers).
     """
-    # Lazy imports — see module docstring.
+    # Lazy import — see module docstring.
     from prussian_engine.search import SearchEngine
-    from prussian_engine.fsg_check import run_validate
 
     if engine is None:
         engine = SearchEngine()
+
+    from prussian_mcp.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
     def search_dictionary(
         query: str,
@@ -133,27 +134,8 @@ def build_local_toolset(engine=None) -> list:
             ``forms`` / ``gender`` are added only when ``filter_pgr``
             matches a paradigm slot for that entry.
         """
-        # Reranker branch intentionally omitted — async gymnastics from
-        # mcp_server.py:467–490 can land later.
-        results = engine.query(query, top_k=top_k)
-        out: list[dict[str, Any]] = []
-        for r in results:
-            entry: dict[str, Any] = {
-                "word": r["word"],
-                "translations": r["translations"],
-            }
-            if filter_pgr:
-                forms_data = engine.get_word_forms(
-                    r["word"], filter_pgr=filter_pgr
-                )
-                if isinstance(forms_data, list):
-                    for fd in forms_data:
-                        if fd.get("forms"):
-                            entry["forms"] = fd["forms"]
-                            entry["gender"] = fd.get("gender", "")
-                            break
-            out.append(entry)
-        return out
+        return search_tool(engine, query, top_k=top_k,
+                           use_reranker=False, filter_pgr=filter_pgr)
 
     def lookup_prussian_word(
         word: str,
@@ -178,7 +160,7 @@ def build_local_toolset(engine=None) -> list:
                 transformations (macron shifts, sibilant variants,
                 vowel alternations).
         """
-        return engine.lookup(word, fuzzy=fuzzy, apply_rules=apply_rules)
+        return lookup_tool(engine, word, fuzzy=fuzzy, apply_rules=apply_rules)
 
     def get_word_forms(lemma: str, filter: str | None = None) -> list[dict[str, Any]]:
         """Get all declension or conjugation forms for a Prussian lemma.
@@ -195,7 +177,7 @@ def build_local_toolset(engine=None) -> list:
                 "ACC.SG.MASC".  Returns only forms matching this
                 pattern.
         """
-        return engine.get_word_forms(lemma, filter_pgr=filter)
+        return wordforms_tool(engine, lemma, filter_pgr=filter)
 
     def validate_prussian(text: str, include_conllu: bool = False) -> str:
         """Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
@@ -232,7 +214,7 @@ def build_local_toolset(engine=None) -> list:
           agreement, nominative in PP) is often a loanword paradigm
           gap rather than a real error.
         """
-        return run_validate(text, include_conllu=include_conllu)
+        return validate_tool(text, include_conllu=include_conllu)
 
     tools = [
         create_tool_from_function(
