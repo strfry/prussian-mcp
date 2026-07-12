@@ -1,7 +1,7 @@
 [project]
 name = "prussian-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Prussian dictionary MCP server and `prussian-agent` CLI"
 readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
@@ -10,7 +10,23 @@ dependencies = [
     "openai>=2.45.0",
     "prussian-fst",
     "pyhfst>=1.4.0",
+    "haystack-ai>=2.30,<3",
 ]
+
+[project.optional-dependencies]
+# Only needed for the `--mcp-url` remote-toolset path of `prussian-agent`.
+# The default in-process toolset does not require this.
+remote = ["mcp-haystack>=1.3"]
+
+[project.scripts]
+prussian-agent = "prussian_mcp.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["prussian_mcp", "prussian_engine"]
 
 # prussian-fst wird editierbar aus dem Geschwister-Checkout eingebunden
 # (In-Process-Import der FST/CG3-Pipeline statt Subprozess).  Liegt der
