@@ -21,11 +21,22 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 
 ### 1. Setup Environment
 
+Das Projekt ist ein uv-Projekt; `prussian-fst` wird als editierbare
+Path-Dependency aus dem Geschwister-Checkout eingebunden (Pfad in
+`pyproject.toml` unter `[tool.uv.sources]` anpassen, falls er woanders
+liegt).
+
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Voraussetzung: prussian-fst-Checkout mit gebauten Artefakten
+make -C ../prussian-fst/fst all cg3-check   # braucht hfst + cg-comp
+# außerdem: cg-proc im PATH (cg3/Apertium)
+
+uv sync
 ```
+
+Das Grammatik-Tool (`validate_prussian`, dreiwertige Prüfung, optional
+mit CoNLL-U-Dependenzanalyse) läuft in-process (pyhfst); fehlen
+Artefakte, meldet der Server beim Start die konkreten make-Kommandos.
 
 ### 2. Configure LLM (Optional)
 
@@ -52,7 +63,7 @@ python mcp_server.py
   - `search_dictionary` - Semantic search
   - `lookup_prussian_word` - Word lookup
   - `get_word_forms` - Declensions/conjugations
-  - `fsg_check` - FSG/CG grammar check (CoNLL-U dependency analysis)
+  - `validate_prussian` - FSG/CG grammar check (three-valued, optional CoNLL-U)
 - **Configure**: `.mcp.json` (already set up)
 - **Best for**: Local development with Claude Code/Desktop
 
@@ -138,11 +149,14 @@ Features:
 - `search_dictionary(query, top_k)` - Semantic search (German/English → Prussian)
 - `lookup_prussian_word(word)` - Lookup Prussian word (Prussian → German/English)
 - `get_word_forms(lemma)` - Get declensions/conjugations
-- `fsg_check(text)` - Parse Prussian text with the FST/CG3 pipeline from
-  [`prussian-fst`](https://github.com/strfry/prussian-fst); returns CoNLL-U
-  (one block per sentence) that the chat UI renders as a dependency tree.
-  MISC carries rule provenance (`Rule=<name,…>` from named CG3 rules via
-  `vislcg3 --trace`, `AgrParent=<id>` from the agreement `SETPARENT` layer).
+- `validate_prussian(text, include_conllu)` - Grammar check with the FST/CG3
+  pipeline from [`prussian-fst`](https://github.com/strfry/prussian-fst)
+  (in-process). Returns three-valued JSON per sentence — `verified_in_coverage`
+  (only positive evidence), `out_of_coverage` (cannot verify — NOT approval),
+  `violations_found` (rule/severity/message per violation). With
+  `include_conllu=true` each sentence also carries its CoNLL-U block
+  (dependency analysis; MISC carries rule provenance `Rule=<name,…>` from
+  named CG3 rules and `AgrParent=<id>` from the agreement `SETPARENT` layer).
   Requires a built prussian-fst checkout (`fst/build/base.fst`) plus
   `vislcg3`/`hfst-flookup` on PATH; location via `PRUSSIAN_FST_DIR`
   (default: sibling directory `../prussian-fst`).

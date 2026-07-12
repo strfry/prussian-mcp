@@ -13,7 +13,7 @@ from openai import OpenAI
 from starlette.responses import Response, StreamingResponse, FileResponse
 
 import prussian_engine
-from prussian_engine.fsg_check import run_fsg_check
+from prussian_engine.fsg_check import run_validate, check_fsg_pipeline
 from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -86,6 +86,10 @@ print("Loading Prussian Dictionary search engine...")
 search_engine = prussian_engine.SearchEngine()
 reranked_engine = None
 print("Search engine loaded successfully!")
+
+# Quick health check of the FST/CG3 grammar pipeline
+fsg_ok, fsg_msg = check_fsg_pipeline()
+print(fsg_msg)
 
 # Initialize OpenAI client for streaming proxy
 llm_client = OpenAI(api_key=OPENAI_API_KEY or "dummy", base_url=OPENAI_BASE_URL)
@@ -542,20 +546,39 @@ def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
 
 
 @mcp.tool()
-def fsg_check(text: str) -> str:
+def validate_prussian(text: str, include_conllu: bool = False) -> str:
     """
-    Parse Prussian text with the FST/CG3 grammar pipeline (FSG/CG check)
-    and return a CoNLL-U dependency analysis.
+    Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
+    The single grammar tool: validates sentences and can also return the
+    full dependency analysis.
 
     Args:
-        text: Prussian sentence(s) to analyze (one or more sentences)
+        text: Prussian sentence(s) to check (one or more sentences)
+        include_conllu: also include each sentence's CoNLL-U dependency
+            analysis (field "conllu", with rule provenance Rule=/
+            AgrParent= in MISC) — same pipeline run, no extra cost.
+            Set true when you need the parse, not just the verdict.
 
     Returns:
-        CoNLL-U (10 tab-separated columns, one block per sentence, blank
-        line between sentences) with rule provenance in MISC (Rule=,
-        AgrParent=). The chat frontend renders this as a dependency tree.
+        JSON: {"overall": {"status", "n_sentences", "n_violations"},
+        "sentences": [{sent_id, text, status, violations, coverage,
+        conllu?}, ...]}
+
+    Interpretation guide (IMPORTANT):
+    - "verified_in_coverage" is the ONLY positive evidence of
+      well-formedness: all words analyzed, low ambiguity, and at least
+      one check family applied to the sentence.
+    - "out_of_coverage" does NOT mean correct — the checker simply
+      cannot verify (unknown words, collapsed analyses, residual
+      ambiguity, or no applicable check; see coverage.reasons).
+      Never treat it as approval.
+    - "violations_found": each violations[] entry names the rule, the
+      offending form (with index and surviving reading), a message, and
+      a severity — "error" (case government / valency / person clash)
+      is reliable; "warning" (adjective agreement, nominative in PP)
+      is often a loanword paradigm gap rather than a real error.
     """
-    return run_fsg_check(text)
+    return run_validate(text, include_conllu=include_conllu)
 
 
 # ── Static Files ────────────────────────────────────────────────────────────────

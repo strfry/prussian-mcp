@@ -48,15 +48,20 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "fsg_check",
-            "description": "Parse Prussian text with the FST/CG3 grammar pipeline (FSG/CG check). Returns a CoNLL-U dependency analysis (rendered as a dependency tree in the chat UI). Use to check grammar/agreement of a Prussian sentence, NOT for dictionary lookups.",
+            "name": "validate_prussian",
+            "description": "Grammar check of Prussian text (FST/CG3 pipeline, three-valued). Returns JSON with per-sentence status: 'verified_in_coverage' (only positive evidence), 'out_of_coverage' (NOT correct — checker cannot verify: unknown words, ambiguity, no applicable rule), or 'violations_found' (rule violations with severity error/warning). Use to check grammar/agreement of a Prussian sentence, NOT for dictionary lookups.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Prussian sentence(s) to analyze (1..n sentences, e.g. 'Labban dēinan!')",
-                    }
+                        "description": "Prussian sentence(s) to check (1..n sentences, e.g. 'Labban dēinan!')",
+                    },
+                    "include_conllu": {
+                        "type": "boolean",
+                        "description": "Also include each sentence's CoNLL-U dependency analysis (field 'conllu'); set true when the parse itself is needed, not just the verdict.",
+                        "default": False,
+                    },
                 },
                 "required": ["text"],
             },

@@ -3,9 +3,18 @@ name = "prussian-mcp"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = "==3.12"
+requires-python = "==3.12.*"
 dependencies = [
+    "mcp>=1.28",
     "numpy>=2.5.1",
     "openai>=2.45.0",
+    "prussian-fst",
     "pyhfst>=1.4.0",
 ]
+
+# prussian-fst wird editierbar aus dem Geschwister-Checkout eingebunden
+# (In-Process-Import der FST/CG3-Pipeline statt Subprozess).  Liegt der
+# Checkout woanders, diesen Pfad anpassen und `uv sync` erneut ausführen.
+# Voraussetzung: dort gebaute Artefakte (make -C <checkout>/fst all cg3-check).
+[tool.uv.sources]
+prussian-fst = { path = "../prussian-fst", editable = true }

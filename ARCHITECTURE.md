@@ -38,7 +38,7 @@ prussian-dictionary/
 ├── ui/                     # Frontend (JS)
 ├── data/                   # Unverändert
 ├── embeddings/             # Unverändert
-├── requirements.txt
+├── pyproject.toml          # uv-Projekt; prussian-fst als editierbare Path-Dependency
 └── ARCHITECTURE.md
 ```
 

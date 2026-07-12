@@ -1,43 +1,40 @@
-"""FSG/CG check — run the prussian-fst FST→CG3 pipeline on Prussian text.
+"""FSG/CG-Grammatikprüfung — In-Process-Anbindung der prussian-fst-Pipeline.
 
-Wraps ``fst/scripts/cg3_pipeline.py --text - --conllu --trace`` from the
-prussian-fst checkout (config.PRUSSIAN_FST_DIR / $PRUSSIAN_FST_DIR):
-FST-Lookup → CG3-Disambiguierung → Dependenzbaum → CoNLL-U, ein Block
-pro Satz, mit Regel-Provenienz in MISC (``Rule=<name,…>`` — benannte
-Grammatikregeln laut vislcg3 --trace — und ``AgrParent=<id>``, das
-Kongruenz-Ziel der agr-head-Regeln).  Das ist die Tool-Signatur, die
-das Chat-Frontend als Abhängigkeitsbaum rendert (isConllu-Erkennung).
+Importiert die stabile API (prussian_fst.api, editierbare uv-Path-
+Dependency, siehe pyproject [tool.uv.sources]): FST-Lookup läuft via
+pyhfst im Prozess (Transducer-Cache bleibt warm), nur cg-proc ist ein
+Subprozess pro Pass.  Kein `uv run`-Umweg mehr.
 
-Requires ``vislcg3`` and ``hfst-flookup`` on PATH and a built
-``fst/build/base.fst`` in the prussian-fst checkout.
+Ein Payload (das einzige Grammatik-Tool, validate_prussian):
+  run_validate(text, include_conllu=False)
+    → dreiwertiges Validierungs-JSON (validator.cg3): violations_found /
+      verified_in_coverage / out_of_coverage, mit overall-Aggregat.
+      Mit include_conllu trägt jeder Satz zusätzlich seinen CoNLL-U-
+      Block (Rule=/AgrParent=-Provenienz in MISC) — gleicher
+      Pipeline-Lauf, kein zweiter Durchlauf.
+
+Voraussetzungen (nicht auto-gebaut): cg-proc im PATH und die Artefakte
+im prussian-fst-Checkout — check_fsg_pipeline() nennt die konkreten
+make-Kommandos, wenn etwas fehlt.
 """
 
+import json
 import subprocess
 
-from .config import PRUSSIAN_FST_DIR
-
-PIPELINE = PRUSSIAN_FST_DIR / "fst" / "scripts" / "cg3_pipeline.py"
+from prussian_fst import api as fst_api
 
 # Guard against runaway inputs — the tool is meant for a few sentences.
 MAX_TEXT_LEN = 4000
 
+# Pro cg-proc-Pass (der FST-Lookup ist in-process und braucht keinen).
+PIPELINE_TIMEOUT = 60.0
 
-def _pipeline_cmd(*extra_args: str) -> list[str]:
-    """Build argv that runs the pipeline inside prussian-fst's venv."""
-    return [
-        "uv", "run", "--directory", str(PRUSSIAN_FST_DIR),
-        str(PIPELINE),
-        *extra_args,
-    ]
+# Reihenfolge fürs overall-Aggregat: das „schlechteste" Satz-Urteil zählt.
+_STATUS_ORDER = ["verified_in_coverage", "out_of_coverage", "violations_found"]
 
 
-def run_fsg_check(text: str, timeout: float = 60.0) -> str:
-    """Parse Prussian text, return CoNLL-U (one block per sentence).
-
-    Raises ValueError for unusable input and RuntimeError when the
-    pipeline is missing or fails — FastMCP turns those into an
-    ``isError`` tool result whose text is the message.
-    """
+def _check_text(text: str) -> str:
+    """Input-Validierung; ValueError wird von FastMCP als isError gerendert."""
     text = (text or "").strip()
     if not text:
         raise ValueError("Kein Text übergeben.")
@@ -45,25 +42,58 @@ def run_fsg_check(text: str, timeout: float = 60.0) -> str:
         raise ValueError(
             f"Text zu lang ({len(text)} Zeichen, max. {MAX_TEXT_LEN})."
         )
-    if not PIPELINE.exists():
-        raise RuntimeError(
-            f"prussian-fst-Pipeline nicht gefunden: {PIPELINE} — "
-            "PRUSSIAN_FST_DIR setzen oder Checkout danebenlegen."
-        )
+    return text
 
-    proc = subprocess.run(
-        _pipeline_cmd("--text", "-", "--conllu", "--trace"),
-        input=text,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    if proc.returncode != 0:
-        tail = (proc.stderr or "").strip().splitlines()[-5:]
-        raise RuntimeError(
-            "FSG/CG-Pipeline fehlgeschlagen: " + (" | ".join(tail) or "kein stderr")
-        )
-    out = proc.stdout.strip()
-    if not out:
-        raise RuntimeError("FSG/CG-Pipeline lieferte keine Analyse.")
-    return out + "\n"
+
+def _translate_errors(fn, *args, **kwargs):
+    """Pipeline-Fehler → RuntimeError mit brauchbarer Diagnose."""
+    try:
+        return fn(*args, **kwargs)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("FSG/CG-Pipeline: cg-proc-Timeout "
+                           f"({PIPELINE_TIMEOUT:.0f}s).")
+    except subprocess.CalledProcessError as e:
+        tail = (e.stderr or "").strip().splitlines()[-5:]
+        raise RuntimeError("FSG/CG-Pipeline fehlgeschlagen: "
+                           + (" | ".join(tail) or "kein stderr"))
+    except FileNotFoundError as e:
+        raise RuntimeError(f"FSG/CG-Pipeline: {e} — "
+                           "cg-proc installiert und Artefakte gebaut? "
+                           "(siehe check_fsg_pipeline)")
+
+
+def run_validate(text: str, include_conllu: bool = False) -> str:
+    """Grammatikprüfung, dreiwertig — JSON mit overall-Aggregat.
+
+    overall.status = schlechtestes Satz-Urteil (violations_found >
+    out_of_coverage > verified_in_coverage).  Mit include_conllu
+    bekommt jeder Satz sein "conllu"-Feld (Dependenzanalyse)."""
+    text = _check_text(text)
+    sentences = _translate_errors(fst_api.validate, text,
+                                  conllu=include_conllu,
+                                  timeout=PIPELINE_TIMEOUT)
+    overall = max((s["status"] for s in sentences), key=_STATUS_ORDER.index)
+    return json.dumps({
+        "overall": {
+            "status": overall,
+            "n_sentences": len(sentences),
+            "n_violations": sum(len(s["violations"]) for s in sentences),
+        },
+        "sentences": sentences,
+    }, ensure_ascii=False, indent=2)
+
+
+def check_fsg_pipeline() -> tuple[bool, str]:
+    """Startup-Healthcheck: Artefakte prüfen + In-Process-Smoke-Test.
+
+    Returns ``(ok, message)`` — never raises.  Wärmt bei Erfolg zugleich
+    den pyhfst-Transducer-Cache vor."""
+    problems = fst_api.check_artifacts()
+    if problems:
+        return False, ("FST/CG3-Pipeline nicht bereit:\n  "
+                       + "\n  ".join(problems))
+    try:
+        fst_api.analyze("Sta", timeout=15.0)
+    except Exception as e:  # noqa: BLE001 — Healthcheck darf nie raisen
+        return False, f"FST/CG3-Healthcheck fehlgeschlagen: {e}"
+    return True, "FST/CG3-Pipeline bereit (in-process)."
