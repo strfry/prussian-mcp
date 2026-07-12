@@ -6,11 +6,10 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 
 ```
 ├── prussian_engine/       Python package (search, chat, tools)
-├── mcp_server.py          MCP server (stdio + web modes, REST API, static files)
+├── mcp_server.py          MCP server (stdio + web modes, REST API)
 ├── data/                  Dictionary data and wordlists
 ├── embeddings/            Pre-computed E5 embeddings
 ├── prompts/               System prompts for LLM
-├── ui/                    Web interface (HTML/JS)
 ├── scripts/               Data pipeline and development scripts
 ├── tests/                 MCP server tests
 ├── .mcp.json              MCP client configuration
@@ -94,14 +93,13 @@ python mcp_server.py
 - **Configure**: `.mcp.json` (already set up)
 - **Best for**: Local development with Claude Code/Desktop
 
-**Option B: MCP Server - Web Mode (Combined MCP + Web UI + OpenAI-compatible API)**
+**Option B: MCP Server - Web Mode (Combined MCP + OpenAI-compatible API)**
 ```bash
 source venv/bin/activate
 python mcp_server.py --web
 ```
 - **Modes**:
   - **MCP Protocol** (SSE): http://localhost:8001/sse
-  - **Web UI**: http://localhost:8001/chatbot.html
   - **OpenAI-compatible API**: POST http://localhost:8001/v1/chat/completions
 - **Requires LLM endpoint** configuration (see step 2)
 - **Configure MCP in Claude Web**:
@@ -197,13 +195,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 - **mcp_server.py**: FastMCP server with stdio and web transports
   - MCP Protocol (SSE for remote clients)
   - OpenAI-compatible REST API (`/v1/chat/completions`)
-  - Static file serving (Web UI)
 - **E5 Embeddings**: Semantic search using multilingual-e5-large (1024-dim)
 - **Tool Calling**: LLM uses tools to search dictionary and build responses
 
 **Two Runtime Modes:**
 1. **Local Mode** (`python mcp_server.py`): Pure MCP protocol via stdio for Claude Code/Desktop
-2. **Web Mode** (`python mcp_server.py --web`): All-in-one server with MCP (SSE), OpenAI-compatible API, and Web UI
+2. **Web Mode** (`python mcp_server.py --web`): All-in-one server with MCP (SSE) and OpenAI-compatible API (Web UI lives in the separate prussian-bot project)
 
 ## Documentation
 

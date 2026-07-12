@@ -1,0 +1,330 @@
+# Prussian Syntax Rules
+
+All morphological rules (inflectional paradigms, derivational suffixes, declension
+tables, conjugation endings) are excluded — these are covered by the dictionary.
+Only the syntactic, prosodic, and combinatorial rules that cannot be inferred from
+dictionary lookups alone are listed below.
+
+Sources (attribution only, not bundled):
+  [N] = Nērtiks grammar (Polish)
+  [P] = Palmaitis, "Insā Prūsiska Grammatiki"
+
+Sembian dialect, Palmaitis/Klussis system.
+
+
+§1 — Accent Loss with Monosyllabic Prepositions                                   [N] [P]
+
+Monosyllabic prepositions with a long vowel (ēn, pēr, prēi, nō) lose vowel length
+when preceding a polysyllabic word. Before monosyllabic words, the length is retained
+and the preposition is typically fused with the word as a compound.
+
+  ēn + buttan   → en buttan     (into the house)
+  pēr + araīkan → per araīkan   (abroad)
+  prēi + mērgan → prei mērgan  (at the girl)
+  nō  + sallin  → na sallin    (on the island)
+
+But: ēnkaps, ēnwangan, nōpalis (before monosyllables the long vowel is kept).
+
+
+§2 — Nominative Subject and Predicate Nominal                                      [N] [P]
+
+The subject is always in the nominative. With būtwei (to be) and pastātwei (to become),
+the predicate nominal also stands in the nominative — not in the instrumental (unlike
+Polish or Russian).
+
+  As asma kunnegs.  — I am a king.
+
+
+§3 — Genitive Pre-Position                                                         [N] [P]
+
+The genitive attribute normally stands BEFORE the noun it modifies. When both a genitive
+attribute and an adjective modify the same noun, the adjective's agreement (gender,
+number) disambiguates which noun is being described:
+
+  wūras anzanas saknis  — the root of the old oak
+      (wūras = gen.sg.masc, agrees with anzanas → "old oak")
+  wurā anzanas saknis   — the old root of the oak
+      (wurā = nom.sg.fem, agrees with saknis → "old root")
+
+
+§4 — Plural Genitive Disambiguation with stēisan                                   [N] [P]
+
+The plural genitive ending is identical to the singular accusative ending. To avoid
+ambiguity, the plural genitive uses the demonstrative stēisan + accusative plural.
+The genitive attribute then follows the head noun:
+
+  saknis stēisan wūran anzanan  — the roots of the old oaks
+
+For a singular genitive that must be moved after its head noun, stesse (masc./neut.)
+or stesses (fem.) + accusative singular is used:
+
+  anzanas saknis  → saknis stesse anzanan       (the root of the oak)
+  līpas saknis    → saknis stesses līpan         (the root of the linden)
+
+Other determiners with distinct gen.pl and acc.sg forms (wisēisan = all, kitēisan =
+other) can substitute for stēisan.
+
+
+§5 — Dative Usage                                                                  [N] [P]
+
+The dative marks:
+  (a) indirect object:
+      As tenginna pēismenin tebbei. — I sent you a letter.
+      Also covers the semantic range of "to" (Polish "do"):
+      Tāns ast mennei peisāwuns. — He has written to me.
+
+  (b) with ezze (from):
+      Tenā pagāuwusi stan ezze ti. — She received it from you.
+
+  (c) with pa (under, static):
+      Kurmjai buwinna pa zemmei. — Moles live under the earth.
+
+  (d) with ēn (in, static — where?):
+      As wīrst būwuns en buttu. — I will be in the house.
+
+
+§6 — Accusative Usage                                                              [N] [P]
+
+The accusative marks:
+  (a) direct object of transitive verbs (infinitive -tun):
+      As peisāwuns pēismenin. — I wrote a letter.
+      Intransitive verbs (-twei) govern genitive instead.
+
+  (b) with these prepositions:
+      sēn  (with)               sēn tin — with you
+      prēi (at, by)             prei mērgan — at the girl
+      pēr  (for, through)       per sunin — for the dog
+      ezze (about)              ezze min — about me
+      ēr   (until, temporal)    ēr wisasīdin — until Tuesday
+      nō/na (on)                na sallin — on the island
+      pa   (after, according to) pa brōkastan — after breakfast
+      pas  (following)          pas sunnin — following the dog
+
+  (c) ēn + accusative (dynamic, direction — where to?):
+      As wīrst gūbuns en buttan. — I will go into the house.
+      (ēn + dative = static; ēn + accusative = dynamic; see §7)
+
+
+§7 — ēn + Case: Static vs. Dynamic                                                 [N] [P]
+
+  ēn + Dative    = static location (where?):      en buttu   (in the house)
+  ēn + Accusative = dynamic direction (where to?): en buttan  (into the house)
+
+The vowel-shortening rule (§1) applies before disyllabic nouns regardless of case.
+
+
+§8 — Instrumental Replacement                                                      [N] [P]
+
+Prussian has no instrumental case. Its functions are covered by:
+  sēn + accusative (instrument, means):
+      As pūwa sen laīwan. — I travelled by ship.
+  pēr + accusative (predicate, role):
+      Tū būlai per kunnegan. — You would be a king.
+
+
+§9 — Predicative Adjective (Neuter)                                                [N] [P]
+
+An adjective used predicatively with būtwei or pastātwei is always neuter, regardless
+of the subject's gender or number:
+
+  Tāns ast labban.   — He is good.
+  Tenā ast labban.   — She is good.
+  Tenēi ast labban.  — They (masc.) are good.
+  Tennas ast labban. — They (fem.) are good.
+
+
+§10 — Pronominal Adjective ("the good one")                                        [N] [P]
+
+When context fully identifies a referent through the adjective alone ("the first one",
+"the good one"), the pronominal form of the adjective (marked pnl, -isis forms) is
+used:
+
+  Bēi dwāi brātei — labs be wārgs.
+  Labasis bēi aūktan, adder wārgasis zemman.
+  There were two brothers — good and bad.
+  The good one was tall, and the bad one was short.
+
+
+§11 — Future Tense                                                                 [N] [P]
+
+Formed with the auxiliary wīrstwei (conjugated in the present) + active past participle.
+The participle agrees with the subject in gender and number:
+
+  As wīrst būwuns (m) / būwusi (f).         — I will be.
+  Mes wīrstmai gūbusis (m) / gūbušas (f).   — We will go.
+
+A short neuter form may replace the gender-agreeing participle:
+
+  As wīrst būwus. / Mes wīrstmai gūbus.
+
+
+§12 — Perfect Tense                                                                [N] [P]
+
+Formed with būtwei (conjugated in the present) + active past participle, gender-
+agreeing with the subject. Describes a present state resulting from a past action
+(completion, present relevance):
+
+  As asma segīwuns stan. — I have done that. (m)
+  Jāu as asma pergūbusi. — I have already arrived. (f)
+
+
+§13 — Pluperfect Tense                                                             [N] [P]
+
+Same construction as the perfect, but būtwei is in the preterite (bēi, bēimai, bēitei).
+Used in reported speech and to emphasize anteriority:
+
+  Bītai as jāu bēi tenginnuns pēismenin. — Yesterday I had already sent the letter.
+
+
+§14 — Passive Voice                                                                [N] [P]
+
+Only transitive verbs (-tun) form a passive. Uses the passive past participle (-ts)
+with būtwei or pastātwei. With pastātwei, the participle is always neuter (cf. §9):
+
+  Lūgis ast jāu segītan.   — The cake is already made.
+  Kaūlai pastāi mestan.    — The dice are cast.
+
+
+§15 — Impersonal Construction with di                                              [N] [P]
+
+The particle di replaces the subject to form impersonal constructions:
+
+  tērpaui di pagaptins.   — One uses tools.
+  būlai di labban.        — It would be good.
+  wīrst di skaitāwus.     — One will read.
+
+When a participle is used, it must be neuter:
+
+  ast di aupallus.        — It has been found.
+
+Some verbs have a special preterite form for use with di (the second pt form in the
+dictionary):
+  immē di                 — one took (not: imme di)
+
+
+§16 — Conjunctive (Subjunctive)                                                    [N] [P]
+
+Formed from the infinitive stem + -lai (sg, 3p), -limai (1pl), -litei (2pl). Used as
+an irrealis (conditional) and in kāi-complement clauses:
+
+  As segīlai.                           — I would do.
+  As madli, kāi tū segīlai stan.        — I ask that you do it.
+
+
+§17 — Optative                                                                     [N] [P]
+
+3rd person: infinitive stem + -sei ("let him / may he"):
+  segīsei   — let him do
+  būsei     — let it be
+
+1st person plural optative/imperative = 1pl indicative:
+  immimai!  — let us take! (= we take)
+
+For būtwei: sēisei (concrete subject) vs. būsei (impersonal): labbai, būsei di tīt.
+
+
+§18 — Modus Relativus (Relative / Hearsay Mood)                                     [P]
+
+Marks reported or second-hand information. Formed with -ts on the 3rd person:
+
+  Present:   ast → astits; wedda → weddats; segēi → segēits
+  Preterite: verbs in -a → -āts (treppa → treppāts)
+             verbs in -i → -ēts (weddi → weddēts)
+
+  Tena gērdaui, geīts kaštūjats jāu dwigubbai. — She says it reportedly already
+  costs twice as much.
+
+
+§19 — Present Participle as Adverbial (Gerund)                                     [N] [P]
+
+The present active participle (-nts) used as an adverbial (converb) by changing its
+ending to -intei, -antei, or -āntei, derived from the 3ps stem:
+
+  3ps -a  → -ants/-ānts → -antei/-āntei
+  3ps -e  → -ints/-īnts → -intei/-īntei
+  3ps -ai → -ānts       → -āntei
+  3ps -ei → -īnts       → -īntei
+
+  Jāntei as widāi azzarans. — Riding, I saw the lakes.
+
+
+§20 — Adverb Formation and Comparison                                              [N] [P]
+
+Adverbs from adjectives: -as/-s → -ai (labs → labbai), -is → -ei, -us → -u.
+
+Comparative adverb: from comparative adjective with -ais/-eis/-uis:
+  spārtai → spārtais (more strongly)
+
+Superlative adverb: prefix uka- + comparative adverb:
+  spārtais → ukaspārtais (most strongly)
+
+Irregular: tūlin (much) → tūls (more) → ukatūls (most).
+           labbai (well) → walnai/walnan (better) → ukawalnai/ukawalnan (best).
+
+
+§21 — Numerals 1–9                                                                  [N]
+
+Decline like adjectives. Counted noun is plural from 2 onward. Numbers 2 and 3 are
+gender-neutral: 2 is always masc./neuter form, 3 is always feminine form.
+
+  dwāi berzis  — two birches
+
+
+§22 — Numerals 10+ (Substantival)                                                   [N]
+
+Tens, hundreds, thousands are formally nouns (for tens: -ts; for hundreds: -a) and
+govern the genitive plural of the counted noun. The counting noun declines; the
+counted noun stays in the genitive. No stēisan needed:
+
+  dwiddesimts sunnin   — twenty dogs (lit. "a twentyness of dogs")
+  sīmtan wārnin        — a hundred crows (lit. "a hundredness of crows")
+
+
+§23 — Numerals 10+ (Adjectival, Alternative)                                        [N]
+
+Without the substantival suffixes -s/-a (bare -t), numerals are indeclinable and the
+counted noun carries the case:
+
+  dwiddesimt sunnei / sunnin / sunnemans / sunnins
+
+
+§24 — Quantity Adverbs as Numerals                                                  [N]
+
+Indeclinable; the counted noun retains its full case inflection:
+
+  tūlin anzanai / anzanan / anzanamans / anzanans  — many oaks
+
+
+§25 — Complex Numbers                                                               [N]
+
+All component numerals have the same form; only the last determines the noun's
+declension:
+
+  sīmtan pēnkdesimt trīs anzanai   — 153 oaks (nom.)
+  sīmtan pēnkdesimt trijjan anzanan — 153 oaks (gen.)
+
+
+§26 — Collective Numerals (-erei)                                                   [N]
+
+Used for pluralia tantum. Answer the question kellinsun? ("in how many?"):
+
+  newīnerei dwarris — nine (sets of) gates
+
+
+§27 — Fractions                                                                    [N]
+
+Cardinal + ordinal (neuter) + measured noun in genitive. No stēisan needed:
+
+  aīnan pēnktan zukan  — one fifth of a fish
+  dwāi penktāi zukan   — two fifths of a fish
+
+
+§28 — Clock Time (Kerdā)                                                            [P]
+
+Minutes + pa + ordinal (past); minutes + pirzdau + ordinal (before/till).
+"Half" = pussi + genitive of the ordinal:
+
+  Pussi Asmas                      — half past seven
+  Punkt uššas                      — six o'clock sharp
+  Pēnkis minūtis pa ketturins      — five past four
+  Ketwirtadelīks pirzdau aīnadesimt — quarter to eleven

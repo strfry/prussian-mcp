@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import mimetypes
 import os
 from typing import Any, AsyncIterator
 from pathlib import Path
@@ -10,7 +9,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from openai import OpenAI
-from starlette.responses import Response, StreamingResponse, FileResponse
+from starlette.responses import Response, StreamingResponse
 
 import prussian_engine
 from prussian_engine.fsg_check import run_validate, check_fsg_pipeline
@@ -151,27 +150,13 @@ def final(language: str = "de") -> str:
 
 # ── Grammar Resources ─────────────────────────────────────────────────────────
 
-GRAMMAR_NERTIKS_PATH = PROMPTS_DIR / "gramatiki.md"
-GRAMMAR_REFERENCE_PATH = PROMPTS_DIR / "gramm.htm"
-GRAMMAR_INFLECTION_PATH = PROMPTS_DIR / "tabula.html"
+GRAMMAR_SYNTAX_PATH = PROMPTS_DIR / "syntax_rules.txt"
 
 
-@mcp.resource("grammar://nertiks")
-def grammar_nertiks() -> str:
-    """Nertiks' Grammatik – Ausführliche Grammatikregeln auf Polnisch (Orthografie, Verbkonjugation, Numerale, Adverbien)."""
-    return _load_prompt(GRAMMAR_NERTIKS_PATH)
-
-
-@mcp.resource("grammar://reference")
-def grammar_reference() -> str:
-    """Donelaitis-Referenz – Vollständige Grammatikreferenz auf Prußisch (Phonetik, Morphologie, Syntax)."""
-    return _load_prompt(GRAMMAR_REFERENCE_PATH)
-
-
-@mcp.resource("grammar://inflection")
-def grammar_inflection() -> str:
-    """Donelaitis-Flexionstabellen – Sämtliche Deklinations- und Konjugationsparadigmen (Prußisch)."""
-    return _load_prompt(GRAMMAR_INFLECTION_PATH)
+@mcp.resource("grammar://syntax")
+def grammar_syntax() -> str:
+    """Prußische Syntaxregeln – Kondensierte Regeln zu Syntax, Prosodie und Kasusrektion (Morphologie steht im Wörterbuch)."""
+    return _load_prompt(GRAMMAR_SYNTAX_PATH)
 
 
 # ── Grammar Injection ──────────────────────────────────────────────────────────
@@ -191,9 +176,7 @@ def _inject_grammar(grammar: bool | list[str] | str | None) -> str:
         return ""
 
     grammar_sources = {
-        "nertiks": PROMPTS_DIR / "gramatiki.md",
-        "reference": PROMPTS_DIR / "gramm.htm",
-        "inflection": PROMPTS_DIR / "tabula.html",
+        "syntax": PROMPTS_DIR / "syntax_rules.txt",
     }
 
     if isinstance(grammar, str):
@@ -579,62 +562,6 @@ def validate_prussian(text: str, include_conllu: bool = False) -> str:
       is often a loanword paradigm gap rather than a real error.
     """
     return run_validate(text, include_conllu=include_conllu)
-
-
-# ── Static Files ────────────────────────────────────────────────────────────────
-
-static_dir = Path(__file__).parent / "ui"
-
-if static_dir.exists():
-
-    @mcp.custom_route("/chatbot.html", methods=["GET"])
-    async def serve_chatbot_html(request):
-        """Serve the chatbot HTML page."""
-        return FileResponse(static_dir / "chatbot.html")
-
-    @mcp.custom_route("/chatbot.js", methods=["GET"])
-    async def serve_chatbot_js(request):
-        """Serve the chatbot JavaScript."""
-        return FileResponse(
-            static_dir / "chatbot.js", media_type="application/javascript"
-        )
-
-    @mcp.custom_route("/mcp-client.js", methods=["GET"])
-    async def serve_mcp_client_js(request):
-        """Serve the MCP client JavaScript."""
-        return FileResponse(
-            static_dir / "mcp-client.js", media_type="application/javascript"
-        )
-
-    @mcp.custom_route("/chat-engine.js", methods=["GET"])
-    async def serve_chat_engine_js(request):
-        """Serve the chat engine JavaScript."""
-        return FileResponse(
-            static_dir / "chat-engine.js", media_type="application/javascript"
-        )
-
-    @mcp.custom_route("/lib/react-engine.js", methods=["GET"])
-    async def serve_react_engine_js(request):
-        """Serve the ReAct engine JavaScript."""
-        lib_path = static_dir.parent / "lib" / "react-engine.js"
-        return FileResponse(lib_path, media_type="application/javascript")
-
-    @mcp.custom_route("/images/{filename}", methods=["GET"])
-    async def serve_images(request):
-        """Serve image files."""
-        filename = request.path_params.get("filename", "")
-        if ".." in filename or "/" in filename:
-            return Response("Invalid filename", status_code=400)
-
-        image_path = static_dir / "images" / filename
-        if image_path.exists() and image_path.is_file():
-            mime_type, _ = mimetypes.guess_type(str(image_path))
-            return FileResponse(image_path, media_type=mime_type)
-        return Response("Image not found", status_code=404)
-
-    print(f"Serving static files from: {static_dir}")
-else:
-    print(f"Warning: Static directory not found: {static_dir}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

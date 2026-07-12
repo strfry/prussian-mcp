@@ -28,14 +28,12 @@ prussian-dictionary/
 │   ├── tools.py            # Tool-Definitionen
 │   └── config.py           # Env-Konfiguration
 ├── mcp_server.py           # FastMCP-Server
-│   ├── Static Files (ui/)
 │   ├── /api/completions Endpoint
 │   └── MCP-Tools registrieren
 ├── prompts/
 │   └── system_prompt.txt   # Unverändert
 ├── scripts/                # CLI-Tools zum Testen
 │   └── test_search.py
-├── ui/                     # Frontend (JS)
 ├── data/                   # Unverändert
 ├── embeddings/             # Unverändert
 ├── pyproject.toml          # uv-Projekt; prussian-fst als editierbare Path-Dependency
@@ -92,7 +90,6 @@ Tool-Definitionen im OpenAI-Format (JSON Schema):
 
 Webserver-Funktionen:
 
-- Statische Files aus ui/ serven
 - `/api/completions` Endpoint (SSE Streaming)
   - Request (POST JSON):
     - `messages`: list – Chat messages
@@ -123,11 +120,10 @@ Test-Skripte ohne Webserver:
 
 Keine großen Frameworks – Plain Python scripts.
 
-### 4. Frontend (ui/)
+### 4. Frontend
 
-- Modernes JavaScript mit Chat-Interface
+- Lebt im separaten Projekt `../prussian-bot` (eigene React-App)
 - Kommunikation mit `/api/completions` Endpoint
-- Chat-Logik client-seitig (ChatEngine in JavaScript)
 
 ## Tech-Stack
 
