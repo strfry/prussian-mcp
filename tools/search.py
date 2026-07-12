@@ -12,7 +12,7 @@ def search_tool(
     query: str,
     top_k: int = 10,
     use_reranker: bool = True,
-    filter_pgr: str | None = None,
+    filter_tags: str | None = None,
     reranked_engine=None,
 ) -> list[dict[str, Any]]:
     """Semantic search in the Prussian dictionary.
@@ -27,7 +27,9 @@ def search_tool(
             Polish, Russian).
         top_k: number of results to return.
         use_reranker: use ``reranked_engine`` when available.
-        filter_pgr: optional PGR filter, e.g. ``"GEN.SG"``.
+        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
+            ``"Part+Pass"``, ``"Opt"``.  When set, each entry's forms
+            are filtered to those whose FST tags contain all wanted tags.
         reranked_engine: optional ``RerankedSearchEngine``; when
             ``use_reranker=True`` and this is ``None``, the reranker
             branch is skipped (same as ``use_reranker=False``).
@@ -60,23 +62,50 @@ def search_tool(
     else:
         results = engine.query(query, top_k)
 
+    # Pre-compute forms_with_tags for all results if filter_tags is set
+    forms_cache: dict[str, list[dict]] = {}
+    if filter_tags:
+        from prussian_engine.fst_tags import forms_with_tags, fst_available
+        if fst_available():
+            for r in results:
+                entries = engine.word_to_entry.get(r["word"].lower(), [])
+                for entry in entries:
+                    fw = forms_with_tags(engine, entry)
+                    if fw:
+                        forms_cache[r["word"].lower()] = fw
+                        break
+
     output: list[dict[str, Any]] = []
     for r in results:
         entry: dict[str, Any] = {
             "word": r["word"],
             "translations": r["translations"],
         }
-        if filter_pgr:
-            forms_data = engine.get_word_forms(r["word"],
-                                               filter_pgr=filter_pgr)
-            if isinstance(forms_data, list):
-                for fd in forms_data:
-                    if fd.get("forms"):
-                        entry["forms"] = fd["forms"]
-                        entry["gender"] = fd.get("gender", "")
-                        break
+        if filter_tags:
+            from prussian_engine.fst_tags import match_tags
+            fw = forms_cache.get(r["word"].lower(), [])
+            if fw:
+                filtered = [f for f in fw
+                            if match_tags(f.get("tags", []), filter_tags)]
+                if filtered:
+                    entry["forms"] = [
+                        {"form": f["form"],
+                         "tags": "+".join(f["tags"]) if f["tags"] else f.get("pgr", "")}
+                        for f in filtered
+                    ]
+                    entry["gender"] = _infer_gender(engine, r["word"])
         output.append(entry)
     return output
+
+
+def _infer_gender(engine, word: str) -> str:
+    """Get gender from the first matching entry."""
+    entries = engine.word_to_entry.get(word.lower(), [])
+    for e in entries:
+        g = e.get("gender", "")
+        if g:
+            return g
+    return ""
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -93,8 +122,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="number of results (default: 10).")
     ap.add_argument("--no-reranker", action="store_true",
                     help="skip reranker (faster, less accurate).")
-    ap.add_argument("--filter-pgr", default=None,
-                    help="PGR filter, e.g. 'GEN.SG', 'PRS.3.SG.IND'.")
+    ap.add_argument("--filter-tags", default=None,
+                    help="FST tag filter, e.g. 'Akk+Sg', 'Part+Pass', 'Opt'.")
     ap.add_argument("--json", action="store_true",
                     help="emit raw JSON.")
     ap.add_argument("--verbose", action="store_true",
@@ -126,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
             args.query,
             top_k=args.top_k,
             use_reranker=not args.no_reranker,
-            filter_pgr=args.filter_pgr,
+            filter_tags=args.filter_tags,
             reranked_engine=reranked_engine,
         )
     except Exception as e:
@@ -151,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {i}. {word} — {trans_str}")
             if e.get("forms"):
                 for f in e["forms"][:5]:
-                    print(f"     {f.get('pgr', '')}: {f.get('form', '')}")
+                    tags_str = f.get("tags", "")
+                    print(f"     {tags_str}: {f.get('form', '')}")
 
     return 0

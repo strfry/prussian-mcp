@@ -1,10 +1,8 @@
-"""DeepSeekChatGenerator — OpenAIChatGenerator subclass that round-trips
-DeepSeek-style ``reasoning_content`` through Haystack's
-``ChatMessage.reasoning`` slot.
+"""ReasoningChatGenerator — OpenAIChatGenerator subclass that round-trips
+``reasoning_content`` through Haystack's ``ChatMessage.reasoning`` slot.
 
-This is a 1:1 move of ``prussian-llm/scaffolding/deepseek_generator.py``
-into ``prussian-mcp`` so the ``prussian-agent`` CLI can pick the DeepSeek
-generator branch whenever the model name contains ``"deepseek"``.
+Works with any OpenAI-compatible model (DeepSeek, Qwen3, etc.) that
+includes ``reasoning_content`` in streaming or non-streaming responses.
 
 Background
 ----------
@@ -13,12 +11,12 @@ Haystack 2.29 ships a ``ReasoningContent`` dataclass on ``ChatMessage``
 populate it on inbound, nor re-emit ``reasoning_content`` on outbound. The
 DeepSeek-reasoner draft (PR #8776) was closed by maintainers in favour of
 "each integration handles reasoning itself." This subclass is that
-per-integration handler for DeepSeek-style models reached via the
+per-integration handler for reasoning-capable models reached via the
 OpenAI Chat Completions API.
 
-DeepSeek's API rejects the next turn of a tool-using conversation with
-HTTP 400 unless the previous assistant message's ``reasoning_content`` is
-echoed back. We therefore:
+Some providers (DeepSeek, Qwen3) reject the next turn of a tool-using
+conversation unless the previous assistant message's ``reasoning_content``
+is echoed back. We therefore:
 
 * override ``run()`` to convert each choice through our own helper, which
   reads ``reasoning_content`` from the OpenAI SDK response and stores it
@@ -30,6 +28,7 @@ echoed back. We therefore:
 No monkey-patching of core Haystack classes.
 """
 
+from dataclasses import replace as dataclass_replace
 from typing import Any
 
 from haystack import component
@@ -81,13 +80,13 @@ def _convert_choice_with_reasoning(completion, choice) -> ChatMessage:
     )
 
 
-class DeepSeekChatGenerator(OpenAIChatGenerator):
-    """OpenAIChatGenerator that round-trips DeepSeek ``reasoning_content``."""
+class ReasoningChatGenerator(OpenAIChatGenerator):
+    """OpenAIChatGenerator that round-trips ``reasoning_content``."""
 
     @component.output_types(replies=list[ChatMessage])
     def run(
         self,
-        messages: list[ChatMessage],
+        messages: list[ChatMessage] | str,
         streaming_callback: StreamingCallbackT | None = None,
         generation_kwargs: dict[str, Any] | None = None,
         *,
@@ -137,7 +136,7 @@ class DeepSeekChatGenerator(OpenAIChatGenerator):
 
         Wraps the stock OpenAI chunk converter and attaches ``reasoning``
         (a ``ReasoningContent``) to each ``StreamingChunk`` whose delta
-        carries DeepSeek's ``reasoning_content`` field. The downstream
+        carries ``reasoning_content``. The downstream
         ``_convert_streaming_chunks_to_chat_message`` accumulates these
         into ``ChatMessage.reasoning`` automatically.
         """
@@ -156,7 +155,11 @@ class DeepSeekChatGenerator(OpenAIChatGenerator):
                     extras = getattr(delta, "model_extra", None) or {}
                     rc = extras.get("reasoning_content")
                 if rc:
-                    chunk_delta.reasoning = ReasoningContent(reasoning_text=rc)
+                    chunk_delta = dataclass_replace(
+                        chunk_delta,
+                        reasoning=ReasoningContent(reasoning_text=rc),
+                        index=chunk_delta.index or 0,
+                    )
             chunks.append(chunk_delta)
             callback(chunk_delta)
         return [_convert_streaming_chunks_to_chat_message(chunks=chunks)]

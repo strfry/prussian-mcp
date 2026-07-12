@@ -373,11 +373,17 @@ class SearchEngine:
 
             categorized_forms = self._structure_forms(raw_forms, entry)
 
+            # Determine which categories actually have data
+            available_categories = [
+                cat for cat, items in categorized_forms.items() if items
+            ]
+
             result = {
                 "lemma": entry.get("word", ""),
                 "translations": translations,
                 "gender": entry.get("gender", ""),
                 "forms": categorized_forms,
+                "available_categories": available_categories,
                 "desc": entry.get("desc", ""),
             }
             if filter_pgr:

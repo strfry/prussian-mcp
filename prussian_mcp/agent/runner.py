@@ -23,7 +23,7 @@ from haystack.components.generators.chat import OpenAIChatGenerator
 from haystack.dataclasses import ChatMessage
 from haystack.utils.auth import Secret
 
-from .generators import DeepSeekChatGenerator
+from .generators import ReasoningChatGenerator
 
 
 # ── ANSI helpers for the live stream (stderr only) ─────────────────────────
@@ -136,20 +136,15 @@ def build_generator(
     timeout: float = 300.0,
     max_retries: int = 2,
 ) -> OpenAIChatGenerator:
-    """Pick the generator class by model name and build it.
+    """Build a reasoning-aware chat generator for any OpenAI-compatible model.
 
-    Selection mirrors ``haystack_runner.py`` main() (Z.512–528): the
-    Apertus branch is intentionally NOT migrated — Apertus strips the
-    ``tools`` kwarg on the wire, so the agent's self-correction via
-    ``validate_prussian`` would not work there. Use gpt-oss / DeepSeek /
-    any OpenAI-compatible model that accepts tools.
+    ``ReasoningChatGenerator`` is a drop-in replacement for
+    ``OpenAIChatGenerator`` that round-trips ``reasoning_content``
+    through Haystack's ``ChatMessage.reasoning`` slot.  Works with any
+    model (DeepSeek, Qwen3, gpt-oss, …) that may return
+    ``reasoning_content`` in the streaming response.
     """
-    gen_cls = (
-        DeepSeekChatGenerator
-        if "deepseek" in model.lower()
-        else OpenAIChatGenerator
-    )
-    return gen_cls(
+    return ReasoningChatGenerator(
         api_key=Secret.from_token(api_key),
         model=model,
         api_base_url=api_base_url,

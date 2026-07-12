@@ -6,7 +6,7 @@ the model to call ``validate_prussian`` on its draft before printing the
 final ``PRUSSIAN:`` line — there is no external orchestration loop.
 """
 
-from .generators import DeepSeekChatGenerator  # noqa: F401  (re-export)
+from .generators import ReasoningChatGenerator  # noqa: F401  (re-export)
 from .runner import (  # noqa: F401  (re-export)
     RunResult,
     build_agent,
@@ -20,7 +20,7 @@ from .runner import (  # noqa: F401  (re-export)
 from .tools import build_local_toolset  # noqa: F401  (re-export)
 
 __all__ = [
-    "DeepSeekChatGenerator",
+    "ReasoningChatGenerator",
     "RunResult",
     "build_agent",
     "build_generator",

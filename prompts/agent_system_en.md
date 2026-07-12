@@ -46,14 +46,16 @@ agreement):
 PROCEDURE for building Prussian sentences — for each content word:
 
 a) Find the lemma: search_dictionary (concept → Prussian) or
-   lookup_prussian_word.
+   lookup_prussian_word (pass the full sentence — it tokenizes and
+   FST-analyzes all tokens at once).
 b) Determine its syntactic role (subject / object / attribute /
    prepositional object …).
 c) Derive the case from role + government (preposition/verb); take
    gender and number from the head noun.
-d) Fetch the EXACT form with get_word_forms using the filter parameter
-   with a PGR tag, e.g. filter="ACC.PL.MASC", "NOM.SG.FEM", "GEN.PL",
-   "PRS.3.SG". Do not pick a form freehand from the table.
+d) Fetch the EXACT form with get_word_forms using the features
+   parameter with FST tags, e.g. features="Akk+Pl+Masc",
+   "Nom+Sg+Fem", "Gen+Pl", "Ind+Pres". Do not pick a form
+   freehand from the table.
 e) Apply the adjective+noun special rule (point 3).
 
 BEFORE the final answer: run a short agreement self-check — verify
@@ -83,15 +85,37 @@ the indicative. get_word_forms provides it in the "subjunctive" field
 "optative" field (etrāsei). Example: kāi etrālai prūsiskai = "so that
 he/she answers in Prussian".
 
+FST TAG LEGEND (used by get_word_forms features and lookup output):
+
+POS: N (noun), Adj (adjective), V (verb), Part (participle), Pron
+(pronoun), Adv (adverb), Prp (preposition), Num (numeral)
+Mood: Ind (indicative), Opt (optative), Imp (imperative), Subj
+(subjunctive), Rel (relative)
+Tense: Pres (present), Pret (preterite), Inf (infinitive)
+Case: Nom, Gen, Dat, Acc
+Number: Sg, Pl
+Gender: Masc, Fem, Neut
+Person: P1, P2, P3
+Other: Pass (passive), Refl (reflexive), Cmp (comparative), Sup
+(superlative)
+
+Tags are joined with ``+`` (e.g. ``V+Ind+Pres+P3+Sg``).  The
+``features`` parameter accepts these tags or human-readable names
+(e.g. ``participle``, ``Gen+Pl``).
+
 TOOL ROLES — read carefully, do not confuse them:
 
-- lookup_prussian_word(word) — input is a PRUSSIAN surface form (any
-  inflected or base form). Use this first for every Prussian word you
-  intend to use.
-- get_word_forms(lemma, filter=...) — input is a PRUSSIAN LEMMA (the
+- lookup_prussian_word(text) — input is PRUSSIAN TEXT (one or more
+  sentences). The tool tokenizes, FST-analyzes each token (producing
+  lemma + tags), and enriches results with dictionary translations.
+  Use this to look up all words in a sentence at once. Each token's
+  output includes FST analyses with tags (e.g. "V+Ind+Pres+P3+Sg").
+  Tokens not found in the FST fall back to dictionary lookup.
+- get_word_forms(lemma, features=...) — input is a PRUSSIAN LEMMA (the
   base form returned by lookup_prussian_word, e.g. "lāuksnā", NOT the
   inflected form "lāuksnan"). Use this to fetch a specific paradigm
-  slot.
+  slot. For verbs, default returns indicative present forms only; use
+  features to request others (e.g. "participle", "Gen+Pl").
 - search_dictionary(query) — input is a query in a SOURCE language
   (German, English, Lithuanian, Latvian, Polish, Russian). NEVER pass
   a Prussian word here — semantic search is for finding Prussian
@@ -99,13 +123,17 @@ TOOL ROLES — read carefully, do not confuse them:
   the input sentence as the query (e.g. search_dictionary("sehen"),
   not search_dictionary("see Old Prussian verb")). Multi-word
   descriptive queries work well (e.g. "Birke Baum" for "birch tree").
+  Optional filter_tags (e.g. "Akk+Sg") restricts results to forms
+  matching those FST tags.
 - validate_prussian(text) — grammar + agreement check of a Prussian
   sentence via the FST/CG3 pipeline.
 
 VERIFICATION DISCIPLINE:
 
-- For each Prussian word: ONE lookup_prussian_word call, optionally
-  ONE get_word_forms on the resulting lemma. That is enough.
+- Pass the full sentence to lookup_prussian_word — it handles all
+  tokens at once with FST analysis.
+- For each content word needing a specific form, ONE get_word_forms
+  call with the features parameter. That is enough.
 - If a Prussian word is not found, mark its attestation as "uncertain"
   in your intermediate reasoning and move on. Do NOT iterate PGR
   filters or rephrase queries trying to force a match — that is
@@ -125,9 +153,9 @@ your draft sentence. Read the returned JSON:
 - overall.status == "violations_found": fix every violation with
   severity "error" (case government, valency, person clash — these
   are reliable). For each, look up the offending form with
-  get_word_forms (using the PGR filter) and replace it. Then call
-  validate_prussian again on the corrected sentence. Repeat until no
-  "error" violations remain.
+  get_word_forms (using the features parameter with FST tags) and
+  replace it. Then call validate_prussian again on the corrected
+  sentence. Repeat until no "error" violations remain.
 - overall.status == "out_of_coverage": this does NOT mean the
   sentence is correct — only that the checker cannot verify (unknown
   words, collapsed analyses, residual ambiguity, or no applicable

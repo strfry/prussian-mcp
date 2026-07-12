@@ -430,7 +430,7 @@ from tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
 @mcp.tool()
 def search_dictionary(
-    query: str, top_k: int = 10, use_reranker: bool = True, filter_pgr: str = None
+    query: str, top_k: int = 10, use_reranker: bool = True, filter_tags: str = None
 ) -> list[dict[str, Any]]:
     """
     Semantic search in the Prussian dictionary.
@@ -442,7 +442,8 @@ def search_dictionary(
         query: Search query in multiple languages (German, English, Lithuanian, Latvian, Polish, Russian)
         top_k: Number of results to return
         use_reranker: More accurate but slower. Use False for simple lookups.
-        filter_pgr: Optional PGR filter for grammatical forms, e.g. "GEN.SG", "ACC.PL.MASC", "PRS.3.SG.IND"
+        filter_tags: Optional FST tag filter, e.g. "Akk+Sg", "Part+Pass", "Opt".
+            When set, each entry's forms are filtered to those matching the tags.
 
     Returns:
         List of dictionary entries with translations and optionally filtered forms
@@ -457,49 +458,39 @@ def search_dictionary(
         query,
         top_k=top_k,
         use_reranker=use_reranker,
-        filter_pgr=filter_pgr,
+        filter_tags=filter_tags,
         reranked_engine=reranked_engine if use_reranker else None,
     )
 
 
 @mcp.tool()
-def lookup_prussian_word(word: str, fuzzy: bool = False, apply_rules: bool = True) -> list[dict[str, Any]]:
+def lookup_prussian_word(text: str, fuzzy: bool = False) -> list[dict[str, Any]]:
     """
-    Look up a specific Prussian word (lemma or inflected form).
-    Searches all form categories: indicative, subjunctive, optative, imperative, participles, declensions.
-    Use this when you already have a Prussian word and need its meaning or base form.
-    For a full sentence, call once per word – never pass the whole sentence.
+    Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
+    Each token is analyzed via the FST cascade and enriched with translations.
+    Tokens without FST analyses fall back to dictionary lookup.
 
-    Workflow for translation FROM Prussian:
-     1. Split sentence into individual words
-     2. Call this tool once per word to get lemma + meaning
-     3. Call get_word_forms if you need the full paradigm
-
-Args:
-    word: Single Prussian word (lemma or inflected form)
-    fuzzy: Set to True if exact lookup fails or word may have spelling variants.
-           Always retry with fuzzy=True before giving up.
-    apply_rules: When True and exact lookup fails, tries prefix stripping
-           (ni-, pa-, pra-, etc.) and orthographic transformations
-           (macron shifts, sibilant variants, vowel alternations).
-           Results include method and rule_applied metadata.
+    Args:
+        text: Prussian text (one or more sentences). Whole sentences are the normal case.
+        fuzzy: Set to True for Levenshtein fallback on OOV tokens.
     """
-    return lookup_tool(search_engine, word, fuzzy=fuzzy, apply_rules=apply_rules)
+    return lookup_tool(search_engine, text, fuzzy=fuzzy)
 
 
 @mcp.tool()
-def get_word_forms(lemma: str, filter: str = None) -> list[dict[str, Any]]:
+def get_word_forms(lemma: str, features: str = None) -> list[dict[str, Any]]:
     """
     Get all declension or conjugation forms for a Prussian lemma.
-    Returns structured forms by category: indicative, optative, subjunctive, imperative, participles, declension, adverb, comparison.
-    Use this AFTER lookup_prussian_word has given you the base lemma.
-    Useful for translation INTO Prussian when you need a specific case or tense.
+    Returns a flat list of forms with their FST tags.
+    For verbs, default shows indicative present forms plus available features.
+    Use features to request specific categories (e.g. "participle", "Gen+Pl").
 
     Args:
         lemma: Prussian base form (from lookup_prussian_word result)
-        filter: Optional PGR filter e.g. "GEN.PL", "PRS.1.SG"
+        features: Optional feature filter, e.g. "participle", "Ind+Pres",
+            "Gen+Pl". Accepts human-readable names or raw FST tags.
     """
-    return wordforms_tool(search_engine, lemma, filter_pgr=filter)
+    return wordforms_tool(search_engine, lemma, features=features)
 
 
 @mcp.tool()

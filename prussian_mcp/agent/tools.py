@@ -111,7 +111,7 @@ def build_local_toolset(engine=None) -> list:
         query: str,
         top_k: int = 10,
         use_reranker: bool = True,
-        filter_pgr: str | None = None,
+        filter_tags: str | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search in the Prussian dictionary.
 
@@ -126,58 +126,52 @@ def build_local_toolset(engine=None) -> list:
             top_k: number of results to return.
             use_reranker: accepted for signature parity with the MCP
                 server; currently ignored (no reranker in-process).
-            filter_pgr: optional PGR filter for grammatical forms, e.g.
-                "GEN.SG", "ACC.PL.MASC", "PRS.3.SG.IND".
+            filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
+                ``"Part+Pass"``, ``"Opt"``.  When set, each entry's
+                forms are filtered to those matching the tags.
 
         Returns:
             List of entries ``{word, translations, forms?, gender?}``.
-            ``forms`` / ``gender`` are added only when ``filter_pgr``
-            matches a paradigm slot for that entry.
+            ``forms`` / ``gender`` are added only when ``filter_tags``
+            matches forms for that entry.
         """
         return search_tool(engine, query, top_k=top_k,
-                           use_reranker=False, filter_pgr=filter_pgr)
+                           use_reranker=False, filter_tags=filter_tags)
 
     def lookup_prussian_word(
-        word: str,
+        text: str,
         fuzzy: bool = False,
-        apply_rules: bool = True,
     ) -> list[dict[str, Any]]:
-        """Look up a specific Prussian word (lemma or inflected form).
+        """Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
 
-        Searches all form categories: indicative, subjunctive, optative,
-        imperative, participles, declensions.  Use this when you already
-        have a Prussian word and need its meaning or base form.  For a
-        full sentence, call once per word — never pass the whole
-        sentence.
+        Each token is analyzed via the FST cascade and enriched with
+        translations.  Tokens without FST analyses fall back to
+        dictionary lookup.
 
         Args:
-            word: single Prussian word (lemma or inflected form).
-            fuzzy: set True if exact lookup fails or the word may have
-                spelling variants.  Always retry with ``fuzzy=True``
-                before giving up.
-            apply_rules: when True and exact lookup fails, try prefix
-                stripping (ni-, pa-, pra-, …) and orthographic
-                transformations (macron shifts, sibilant variants,
-                vowel alternations).
+            text: Prussian text (one or more sentences).  Whole
+                sentences are the normal case.
+            fuzzy: set True for Levenshtein fallback on OOV tokens.
         """
-        return lookup_tool(engine, word, fuzzy=fuzzy, apply_rules=apply_rules)
+        return lookup_tool(engine, text, fuzzy=fuzzy)
 
-    def get_word_forms(lemma: str, filter: str | None = None) -> list[dict[str, Any]]:
+    def get_word_forms(lemma: str, features: str | None = None) -> list[dict[str, Any]]:
         """Get all declension or conjugation forms for a Prussian lemma.
 
-        Returns structured forms by category: indicative, optative,
-        subjunctive, imperative, participles, declension, adverb,
-        comparison.  Use this AFTER ``lookup_prussian_word`` has given
-        you the base lemma.  Useful for translation INTO Prussian when
-        you need a specific case or tense.
+        Returns a flat list of forms with their FST tags.  For verbs,
+        the default shows only indicative present forms plus a list of
+        available features.  Use ``features`` to request specific
+        categories.
 
         Args:
             lemma: Prussian base form (from ``lookup_prussian_word``).
-            filter: optional PGR filter, e.g. "GEN.PL", "PRS.1.SG",
-                "ACC.SG.MASC".  Returns only forms matching this
-                pattern.
+            features: optional comma-separated feature filter.  Accepts
+                human-readable names (``participle``, ``conjunctive``,
+                ``optative``, ``present``, ``preterite``,
+                ``infinitive``) or raw FST tags (``Part+Pass``,
+                ``Ind``, ``Gen+Pl``).
         """
-        return wordforms_tool(engine, lemma, filter_pgr=filter)
+        return wordforms_tool(engine, lemma, features=features)
 
     def validate_prussian(text: str, include_conllu: bool = False) -> str:
         """Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
@@ -223,31 +217,27 @@ def build_local_toolset(engine=None) -> list:
                 "Semantic search in the Prussian dictionary. Use this when "
                 "you have a concept or modern-language word and want to find "
                 "the Prussian equivalent. Do NOT use for looking up known "
-                "Prussian forms — use lookup_prussian_word instead."
+                "Prussian forms — use lookup_prussian_word instead. "
+                "Optional filter_tags (e.g. 'Akk+Sg', 'Part+Pass') "
+                "restricts results to matching forms."
             ),
         ),
         create_tool_from_function(
             function=lookup_prussian_word,
             description=(
-                "Look up a specific Prussian word (lemma or inflected "
-                "form). Searches all form categories: indicative, "
-                "subjunctive, optative, imperative, participles, "
-                "declensions. Use this when you already have a Prussian "
-                "word and need its meaning or base form. For a full "
-                "sentence, call once per word — never pass the whole "
-                "sentence."
+                "Look up a Prussian sentence: tokenize, FST-analyze, "
+                "enrich from dictionary. Each token gets FST analyses "
+                "(lemma + tags) and dictionary translations. Whole "
+                "sentences are the normal case."
             ),
         ),
         create_tool_from_function(
             function=get_word_forms,
             description=(
-                "Get all declension or conjugation forms for a Prussian "
-                "lemma. Returns structured forms by category: "
-                "indicative, optative, subjunctive, imperative, "
-                "participles, declension, adverb, comparison. Use this "
-                "AFTER lookup_prussian_word has given you the base lemma. "
-                "Useful for translation INTO Prussian when you need a "
-                "specific case or tense."
+                "Get declension/conjugation forms for a Prussian lemma. "
+                "Returns flat list of forms with FST tags. For verbs, "
+                "default shows indicative present only; use features "
+                "(e.g. 'participle', 'Gen+Pl') for specific categories."
             ),
         ),
         create_tool_from_function(
