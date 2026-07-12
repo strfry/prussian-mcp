@@ -105,7 +105,7 @@ def build_local_toolset(engine=None) -> list:
     if engine is None:
         engine = SearchEngine()
 
-    from prussian_mcp.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
+    from tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
     def search_dictionary(
         query: str,

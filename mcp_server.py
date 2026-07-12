@@ -425,7 +425,7 @@ async def openai_completions_endpoint(request):
 
 # ── MCP Tools ────────────────────────────────────────────────────────────────
 
-from prussian_mcp.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
+from tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
 
 @mcp.tool()

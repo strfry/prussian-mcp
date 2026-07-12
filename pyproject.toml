@@ -20,17 +20,17 @@ remote = ["mcp-haystack>=1.3"]
 
 [project.scripts]
 agent = "prussian_mcp.cli:main"
-validate = "prussian_mcp.tools.validate:main"
-search = "prussian_mcp.tools.search:main"
-lookup = "prussian_mcp.tools.lookup:main"
-wordforms = "prussian_mcp.tools.wordforms:main"
+validate = "tools.validate:main"
+search = "tools.search:main"
+lookup = "tools.lookup:main"
+wordforms = "tools.wordforms:main"
 
 [build-system]
 requires = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["prussian_mcp", "prussian_engine"]
+packages = ["prussian_mcp", "prussian_engine", "tools"]
 
 # prussian-fst wird editierbar aus dem Geschwister-Checkout eingebunden
 # (In-Process-Import der FST/CG3-Pipeline statt Subprozess).  Liegt der
