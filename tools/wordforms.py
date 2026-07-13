@@ -53,7 +53,7 @@ def wordforms_tool(
             valid = sorted(set(
                 list(_FEATURE_NAME_MAP.keys()) +
                 ["Part", "Ind", "Opt", "Subj", "Imp", "Rel",
-                 "Pres", "Pret", "Inf", "Pass", "Refl",
+                 "Pres", "Pret", "Inf", "Pass", "Refl", "Adv",
                  "Nom", "Gen", "Dat", "Akk",
                  "Sg", "Pl", "Masc", "Fem", "Neut",
                  "P1", "P2", "P3"]
@@ -147,6 +147,7 @@ _FEATURE_NAME_MAP = {
     "present": "Pres",
     "preterite": "Pret",
     "infinitive": "Inf",
+    "adverb": "Adv",
 }
 
 
@@ -157,6 +158,7 @@ def _available_features(present_tags: set[str]) -> list[str]:
         ("Ind", "indicative"), ("Pres", "present"), ("Pret", "preterite"),
         ("Opt", "optative"), ("Subj", "subjunctive"), ("Imp", "imperative"),
         ("Inf", "infinitive"), ("Part", "participle"),
+        ("Adv", "adverb"),
         ("Pass", "passive"), ("Refl", "reflexive"),
         ("Nom", "nominative"), ("Gen", "genitive"),
         ("Dat", "dative"), ("Akk", "accusative"),

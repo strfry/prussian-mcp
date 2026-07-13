@@ -108,7 +108,7 @@ def build_local_toolset(engine=None) -> list:
             features: optional comma-separated feature filter.  Accepts
                 human-readable names (``participle``, ``conjunctive``,
                 ``optative``, ``present``, ``preterite``,
-                ``infinitive``) or raw FST tags (``Part+Pass``,
+                ``infinitive``, ``adverb``) or raw FST tags (``Part+Pass``,
                 ``Ind``, ``Gen+Pl``).
         """
         return wordforms_tool(engine, lemma, features=features)

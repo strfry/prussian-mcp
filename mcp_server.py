@@ -487,7 +487,7 @@ def get_word_forms(lemma: str, features: str = None) -> list[dict[str, Any]]:
         features: optional comma-separated feature filter.  Accepts
             human-readable names (``participle``, ``conjunctive``,
             ``optative``, ``present``, ``preterite``,
-            ``infinitive``) or raw FST tags (``Part+Pass``,
+            ``infinitive``, ``adverb``) or raw FST tags (``Part+Pass``,
             ``Ind``, ``Gen+Pl``).
     """
     return wordforms_tool(search_engine, lemma, features=features)

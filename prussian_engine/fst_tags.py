@@ -86,6 +86,7 @@ FEATURE_MAP: dict[str, str] = {
     "neuter": "Neut",
     "comparative": "Cmp",
     "superlative": "Sup",
+    "adverb": "Adv",
     "cardinal": "Card",
     "ordinal": "Ord",
 }
