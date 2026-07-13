@@ -4,7 +4,7 @@ from .search import SearchEngine
 from .config import (
     DICTIONARY_PATH,
     EMBEDDINGS_PATH,
-    SYSTEM_PROMPT_PATH,
+    AGENT_PROMPT_PATH,
     OPENAI_MODEL,
     OPENAI_BASE_URL,
 )

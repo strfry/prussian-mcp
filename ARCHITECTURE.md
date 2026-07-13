@@ -1,42 +1,45 @@
 # Prussian Dictionary – Architektur
 
-## Status
-Dieses Dokument beschreibt die Ziel-Architektur für den Rewrite. Die aktuelle Implementierung dient als Ausgangsbasis.
-
 ## Überblick
 
-Das Projekt ist ein RAG-System für ein Altpreußisch-Wörterbuch:
+RAG-System für ein Altpreußisch-Wörterbuch:
 
-- Semantische Suche via E5-Embeddings
-- Tool-gestützte Chat-Konversation mit einem LLM (Frontend-seitig)
-- FastMCP als Webserver mit statischem Frontend und REST-Endpoint
+- Semantische Suche via Embeddings
+- Tool-gestützte Übersetzung via LLM-Agent (smolagents)
+- FastMCP als Webserver mit MCP-Tools, -Prompts und -Resources
 
 ```
-Browser → FastMCP Server → prussian_engine → Search/Chat → LLM
-                                       ↓
-                                  Data Layer
-                             (Dictionary + Embeddings)
+User → prussian-agent CLI → smolagents ToolCallingAgent → LLM
+                              ↕ (4 Tools)                  ↓
+                        prussian_engine              PRUSSIAN: <Satz>
+                        (SearchEngine + FST/CG3)
+
+MCP-Clients → FastMCP Server → prussian_engine
+              (4 Tools + Prompts + Resources)
 ```
 
 ## Verzeichnisstruktur
 
 ```
-prussian-dictionary/
-├── prussian_engine/        # Python-Paket (importierbar für CLI)
-│   ├── __init__.py         # Hauptexport
-│   ├── search.py           # Embedding-basierte Suche + get_word_forms
-│   ├── tools.py            # Tool-Definitionen
-│   └── config.py           # Env-Konfiguration
-├── mcp_server.py           # FastMCP-Server
-│   ├── /api/completions Endpoint
-│   └── MCP-Tools registrieren
+prussian-mcp/
+├── agents/                  # prussian-agent CLI + Runner
+│   ├── cli.py               # argparse entry point
+│   ├── runner.py            # run_agent, RunResult, extract_candidate
+│   └── tools.py             # in-process smolagents Tools (Single Source of Truth)
+├── prussian_engine/         # Python-Paket (importierbar für CLI)
+│   ├── __init__.py          # Hauptexport
+│   ├── search.py            # Embedding-basierte Suche + get_word_forms
+│   ├── fsg_check.py         # FST/CG3 Grammar Pipeline
+│   └── config.py            # Env-Konfiguration
+├── tools/                   # Shared CLI entry points (validate, search, lookup, wordforms)
+├── mcp_server.py            # FastMCP-Server (stdio / streamable-http)
 ├── prompts/
-│   └── system_prompt.txt   # Unverändert
-├── scripts/                # CLI-Tools zum Testen
-│   └── test_search.py
-├── data/                   # Unverändert
-├── embeddings/             # Unverändert
-├── pyproject.toml          # uv-Projekt; prussian-fst als editierbare Path-Dependency
+│   ├── agent_system_en.md   # Kanonischer Agent-Prompt
+│   ├── plan_prompt.txt      # MCP plan-Prompt
+│   ├── final_prompt.txt     # MCP final-Prompt
+│   ├── syntax_rules.txt     # MCP Resource: Syntaxregeln
+│   └── base_vocab.md        # MCP Resource: Basisvokabular
+├── pyproject.toml           # uv-Projekt; prussian-fst als editierbare Path-Dependency
 └── ARCHITECTURE.md
 ```
 
@@ -46,120 +49,58 @@ prussian-dictionary/
 - ~10.737 Einträge (via Release-Asset von strfry/prussian-corpus)
 - Felder: word, paradigm, gender, desc, translations, forms
 - Übersetzungen: miks (DE), engl (EN), leit (LT), lett (Lettisch), pols (Polnisch), mask (Russisch)
-- Wichtig: Einträge ohne translations sind Formen/Verweise auf Hauptlemmas
 
-### Embeddings (embeddings/embeddings_e5_prefix.*)
-- Modell: intfloat/multilingual-e5-large (1024-dim)
-- Strategie: translations_only
-- Wichtig: Query strings erhalten `query:` Prefix, Embeddings nutzen `passage:` Prefix
-
-### Prompts (prompts/system_prompt.txt)
-Wird unverändert übernommen.
+### Embeddings (embeddings/)
+- Semantische Suche mit konfigurierbarem Embedding-Modell
+- Query/Passage Prefix via ENV konfigurierbar
 
 ## Komponenten
 
-### 1. prussian_engine Modul
+### 1. prussian_engine
 
 Das Herzstück – unabhängig vom Webserver importierbar für CLI-Tools.
 
-#### `__init__.py`
-- Exports: `SearchEngine`, `load()`
+- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy
+- `fsg_check.py`: FST/CG3 Grammar Pipeline
+- `config.py`: Liest Env-Variablen (`OPENAI_*`, `EMBEDDING_*`, `RERANK_*`)
 
-#### `config.py`
-- Liest Env-Variablen: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`
-- Datenpfade: `data/twanksta_entries.json`, `embeddings/`
+### 2. agents (prussian-agent CLI)
 
-#### `search.py`
-- Lädt vorberechnete E5-Embeddings beim Start
-- Kosinus-Ähnlichkeit via NumPy
-- Methoden:
-  - `query(query: str, top_k: int)` – Semantische Suche, gibt nur Lemmas mit Übersetzung zurück
-  - `lookup(prussian_word: str)` – Reverse Lookup (Lemma + alle Formen)
-  - `get_word_forms(lemma: str)` – Deklination/Konjugation für ein Lemma
+- `cli.py`: argparse entry point, `--validate-only`, `--mcp-url`, `--json`
+- `runner.py`: `run_agent()` – smolagents ToolCallingAgent, `extract_candidate()`, `parse_last_validation()`
+- `tools.py`: 4 in-process smolagents Tools (Single Source of Truth für Docstrings)
 
-#### `tools.py`
-Tool-Definitionen im OpenAI-Format (JSON Schema):
-1. `search_dictionary` – Semantische Suche, DE/EN → Preußisch
-   - Returns: `[{word, de, en}, ...]` (knapp: nur Lemma + Übersetzung)
-2. `lookup_prussian_word` – Reverse Lookup, Preußisch → DE/EN (sucht auch flektierte Formen)
-   - Returns: `[{word, de, en, forms?}, ...]`
-3. `get_word_forms` – Deklination/Konjugation für ein Lemma
-   - Returns: `{lemma, forms, translations, paradigm, gender}`
+### 3. mcp_server.py (FastMCP)
 
-### 2. mcp_server.py (FastMCP)
+MCP-Tools (4):
+- `search_dictionary` – Semantische Suche
+- `lookup_prussian_word` – Tokenize + FST-Analyse
+- `get_word_forms` – Deklination/Konjugation
+- `validate_prussian` – FST/CG3 Grammatik-Check
 
-Webserver-Funktionen:
+MCP-Prompts:
+- `plan` – Planungs-Prompt
+- `final` – Antwortformulierung
 
-- `/api/completions` Endpoint (SSE Streaming)
-  - Request (POST JSON):
-    - `messages`: list – Chat messages
-    - `tools`: list – Tool definitions (optional, default aus tools.py)
-    - `temperature`: float – Sampling temperature (default 0.7)
-    - `max_tokens`: int – Maximum tokens (default 2000)
-    - `language`: str – Response language 'de' oder 'lt' (default 'de')
-  - Response (SSE stream):
-    - `content_delta`: {"content": string}
-    - `reasoning_delta`: {"content": string}
-    - `tool_call_delta`: {"index": int, "tool_call": {...}}
-    - `done`: {"finish_reason": string}
-    - `error`: {"error": string}
+MCP-Resources:
+- `grammar://syntax` – Kondensierte Syntaxregeln
+- `vocabulary://base` – Basisvokabular (Pronomen, Präpositionen,高频 Verben)
 
-- MCP-Tools:
-  - Registriert die 3 Dictionary-Tools für das LLM
-  - Ermöglicht MCP-Clients (z.B. Claude Desktop) direkt zu nutzen
+Streaming LLM Proxy:
+- `/api/completions` (SSE)
+- `/v1/chat/completions` (OpenAI-kompatibel)
 
-Startup:
-- Lädt prussian_engine einmalig beim Start
-- Alle Daten (Dictionary + Embeddings) in RAM
+### 4. Tools (shared CLI entry points)
 
-### 3. CLI-Tools (scripts/)
-
-Test-Skripte ohne Webserver:
-
-- `scripts/test_search.py` – Suchanfragen direkt an SearchEngine
-
-Keine großen Frameworks – Plain Python scripts.
-
-### 4. Frontend
-
-- Lebt im separaten Projekt `../prussian-bot` (eigene React-App)
-- Kommunikation mit `/api/completions` Endpoint
+`tools/` – Direkte CLI-Aufrufe ohne Agent:
+- `validate`, `search`, `lookup`, `wordforms`
 
 ## Tech-Stack
 
 | Komponente   | Technologie              |
 |--------------|--------------------------|
+| Agent        | smolagents               |
 | Web Server   | FastMCP                  |
 | Embeddings   | numpy                    |
 | LLM Client   | openai (compat)          |
-
-## Konfiguration
-
-Via Environment Variables:
-
-```
-OPENAI_API_KEY=...      # API Key (local: kann leer sein)
-OPENAI_BASE_URL=...     # Endpoint (z.B. http://localhost:8001/v1)
-OPENAI_MODEL=...        # Modellname (z.B. gpt-oss-20b-int4-ov)
-```
-
-Datenpfade hardcoded:
-- `data/twanksta_entries.json`
-- `embeddings/`
-
-## Offene Punkte
-
-1. ~~Tool-Definitionen: Weiterhin als Python-Datei oder als JSON extrahieren?~~
-2. Logging: Gewünscht?
-3. ~~Frontend: Client-side Dictionary Loading (ui/chatbot.js) ist veraltet und sollte entfernt werden~~
-
-## Datenfluss (Chat)
-
-```
-POST /api/completions (FastMCP, SSE Streaming)
-    Request: {messages, tools?, temperature, max_tokens, language}
-    → Stream LLM responses
-        → content_delta, reasoning_delta, tool_call_delta
-    → Client executes tools via MCP
-    → Client sends results back as assistant message
-```
+| Grammar      | prussian-fst (FST/CG3)   |

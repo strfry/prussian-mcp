@@ -18,9 +18,8 @@ from prussian_engine.config import (
     OPENAI_BASE_URL,
     OPENAI_MODEL,
     PROMPTS_DIR,
-    SYSTEM_PROMPT_PATH,
+    AGENT_PROMPT_PATH,
 )
-from prussian_engine.tools import TOOLS
 from prussian_engine.rerank_search import RerankedSearchEngine
 
 # Parse command-line arguments at module level (before FastMCP construction)
@@ -108,32 +107,10 @@ def _load_prompt(path: Path) -> str:
     return "You are an assistant."
 
 
-def _build_tool_descriptions() -> str:
-    """Build human-readable tool descriptions from TOOLS definitions."""
-    lines = []
-    for t in TOOLS:
-        fn = t["function"]
-        params = ", ".join(
-            f"{name}: {schema.get('type', 'any')}"
-            + (f" = {json.dumps(schema['default'])}" if "default" in schema else "")
-            for name, schema in fn["parameters"].get("properties", {}).items()
-        )
-        desc = " ".join(fn["description"].split())
-        lines.append(f"- {fn['name']}({params}): {desc}")
-    return "\n".join(lines)
-
-
 def _render_prompt(path: Path, language: str = "de") -> str:
-    """Load prompt, substitute {lang_code} and {tools}."""
+    """Load prompt, substitute {lang_code}."""
     lang_code = "LT" if language == "lt" else "DE"
-    content = _load_prompt(path).replace("{lang_code}", lang_code)
-    return content.replace("{tools}", _build_tool_descriptions())
-
-
-@mcp.prompt()
-def chat(language: str = "de") -> str:
-    """System prompt for Prussian chatbot — understands user input via tool calls."""
-    return _render_prompt(SYSTEM_PROMPT_PATH, language)
+    return _load_prompt(path).replace("{lang_code}", lang_code)
 
 
 @mcp.prompt()
@@ -157,6 +134,15 @@ GRAMMAR_SYNTAX_PATH = PROMPTS_DIR / "syntax_rules.txt"
 def grammar_syntax() -> str:
     """Prußische Syntaxregeln – Kondensierte Regeln zu Syntax, Prosodie und Kasusrektion (Morphologie steht im Wörterbuch)."""
     return _load_prompt(GRAMMAR_SYNTAX_PATH)
+
+
+BASE_VOCAB_PATH = PROMPTS_DIR / "base_vocab.md"
+
+
+@mcp.resource("vocabulary://base")
+def base_vocabulary() -> str:
+    """Engine-verifiziertes Basisvokabular: Pronomen, Partikel, Präpositionen,高频 Verben."""
+    return _load_prompt(BASE_VOCAB_PATH)
 
 
 # ── Grammar Injection ──────────────────────────────────────────────────────────
@@ -204,8 +190,7 @@ def _inject_grammar(grammar: bool | list[str] | str | None) -> str:
 def _format_system_prompt(language: str = "de", grammar: bool | list[str] | str | None = None) -> str:
     """Format system prompt with language code and optional grammar injection."""
     lang_code = "LT" if language == "lt" else "DE"
-    content = _load_prompt(SYSTEM_PROMPT_PATH).replace("{lang_code}", lang_code)
-    content = content.replace("{tools}", _build_tool_descriptions())
+    content = _load_prompt(AGENT_PROMPT_PATH).replace("{lang_code}", lang_code)
 
     grammar_text = _inject_grammar(grammar)
     if grammar_text:
@@ -430,23 +415,32 @@ from tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
 @mcp.tool()
 def search_dictionary(
-    query: str, top_k: int = 10, use_reranker: bool = True, filter_tags: str = None
+    query: str,
+    top_k: int = 10,
+    use_reranker: bool = True,
+    filter_tags: str = None,
 ) -> list[dict[str, Any]]:
-    """
-    Semantic search in the Prussian dictionary.
-    Use this when you have a concept or modern language word and want to find 
-    the Prussian equivalent. Do NOT use for looking up known Prussian forms –
-    use lookup_prussian_word instead.
+    """Semantic search in the Prussian dictionary.
+
+    Use this when you have a concept or modern-language word and want
+    to find the Prussian equivalent.  Do NOT use for looking up
+    known Prussian forms -- use ``lookup_prussian_word`` instead.
 
     Args:
-        query: Search query in multiple languages (German, English, Lithuanian, Latvian, Polish, Russian)
-        top_k: Number of results to return
-        use_reranker: More accurate but slower. Use False for simple lookups.
-        filter_tags: Optional FST tag filter, e.g. "Akk+Sg", "Part+Pass", "Opt".
-            When set, each entry's forms are filtered to those matching the tags.
+        query: search query (German, English, Lithuanian, Latvian,
+            Polish, Russian).  Never add "prussian"/"preußisch" --
+            it's implicit.
+        top_k: number of results to return.
+        use_reranker: accepted for signature parity with the MCP
+            server; currently ignored (no reranker in-process).
+        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
+            ``"Part+Pass"``, ``"Opt"``.  When set, each entry's
+            forms are filtered to those matching the tags.
 
     Returns:
-        List of dictionary entries with translations and optionally filtered forms
+        List of entries ``{word, translations, forms?, gender?}``.
+        ``forms`` / ``gender`` are added only when ``filter_tags``
+        matches forms for that entry.
     """
     global reranked_engine
 
@@ -465,73 +459,75 @@ def search_dictionary(
 
 @mcp.tool()
 def lookup_prussian_word(text: str, fuzzy: bool = False) -> list[dict[str, Any]]:
-    """
-    Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
-    Each token is analyzed via the FST cascade and enriched with translations.
-    Tokens without FST analyses fall back to dictionary lookup.
+    """Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
+
+    Each token is analyzed via the FST cascade and enriched with
+    translations.  Tokens without FST analyses fall back to
+    dictionary lookup.
 
     Args:
-        text: Prussian text (one or more sentences). Whole sentences are the normal case.
-        fuzzy: Set to True for Levenshtein fallback on OOV tokens.
+        text: Prussian text (one or more sentences).  Whole
+            sentences are the normal case.
+        fuzzy: set True for Levenshtein fallback on OOV tokens.
     """
     return lookup_tool(search_engine, text, fuzzy=fuzzy)
 
 
 @mcp.tool()
 def get_word_forms(lemma: str, features: str = None) -> list[dict[str, Any]]:
-    """
-    Get all declension or conjugation forms for a Prussian lemma.
-    Returns a flat list of forms with their FST tags.
-    For verbs, default shows indicative present forms plus available features.
-    Use features to request specific categories (e.g. "participle", "Gen+Pl").
+    """Get all declension or conjugation forms for a Prussian lemma.
+
+    Returns a flat list of forms with their FST tags.  For verbs,
+    the default shows only indicative present forms plus a list of
+    available features.  Use ``features`` to request specific
+    categories.
 
     Args:
-        lemma: Prussian base form (from lookup_prussian_word result)
-        features: Optional feature filter, e.g. "participle", "Ind+Pres",
-            "Gen+Pl". Accepts human-readable names or raw FST tags.
+        lemma: Prussian base form (from ``lookup_prussian_word``).
+        features: optional comma-separated feature filter.  Accepts
+            human-readable names (``participle``, ``conjunctive``,
+            ``optative``, ``present``, ``preterite``,
+            ``infinitive``) or raw FST tags (``Part+Pass``,
+            ``Ind``, ``Gen+Pl``).
     """
     return wordforms_tool(search_engine, lemma, features=features)
 
 
 @mcp.tool()
 def validate_prussian(text: str, include_conllu: bool = False) -> str:
-    """
-    Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
-    The single grammar tool: validates sentences and can also return the
-    full dependency analysis.
+    """Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
+
+    The single grammar tool: validates sentences and can also return
+    the full dependency analysis.
 
     Args:
-        text: Prussian sentence(s) to check (one or more sentences)
-        include_conllu: also include each sentence's CoNLL-U dependency
-            analysis (field "conllu", with rule provenance Rule=/
-            AgrParent= in MISC) — same pipeline run, no extra cost.
-            Set true when you need the parse, not just the verdict.
+        text: Prussian sentence(s) to check (one or more sentences).
+        include_conllu: also include each sentence's CoNLL-U
+            dependency analysis (field "conllu", with rule provenance
+            ``Rule=/`` / ``AgrParent=`` in MISC) — same pipeline
+            run, no extra cost.  Set True when you need the parse,
+            not just the verdict.
 
     Returns:
-        JSON: {"overall": {"status", "n_sentences", "n_violations"},
+        JSON: ``{"overall": {"status", "n_sentences", "n_violations"},
         "sentences": [{sent_id, text, status, violations, coverage,
-        conllu?}, ...]}
+        conllu?}, ...]}``.
 
     Interpretation guide (IMPORTANT):
-    - "verified_in_coverage" is the ONLY positive evidence of
-      well-formedness: all words analyzed, low ambiguity, and at least
-      one check family applied to the sentence.
-    - "out_of_coverage" does NOT mean correct — the checker simply
-      cannot verify (unknown words, collapsed analyses, residual
-      ambiguity, no applicable check, or a nominal whose case has no
-      licensing context — reason "unlicensed_case"; see
-      coverage.reasons).  Never treat it as approval.
-    - "violations_found": each violations[] entry names the rule, the
-      offending form (with index and surviving reading), a message, and
-      a severity — "error" (case government / valency / person or
-      number clash) is reliable; "warning" (adjective agreement,
-      nominative in PP, duplicate subject) is often a loanword paradigm
-      gap rather than a real error.
 
-    CoNLL-U note: the fallback deprel "dep" means the token could not
-    be attached with a licensed relation; sentences with free-floating
-    nominals degrade to out_of_coverage (unlicensed_case), never to
-    verified.
+    - ``verified_in_coverage`` is the ONLY positive evidence of
+      well-formedness: all words analyzed, low ambiguity, and at
+      least one check family applied to the sentence.
+    - ``out_of_coverage`` does NOT mean correct — the checker simply
+      cannot verify (unknown words, collapsed analyses, residual
+      ambiguity, or no applicable check; see coverage.reasons).
+      Never treat it as approval.
+    - ``violations_found``: each ``violations[]`` entry names the
+      rule, the offending form (with index and surviving reading),
+      a message, and a severity — ``"error"`` (case government /
+      valency / person clash) is reliable; ``"warning"`` (adjective
+      agreement, nominative in PP) is often a loanword paradigm
+      gap rather than a real error.
     """
     return validate_tool(text, include_conllu=include_conllu)
 

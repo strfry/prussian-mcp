@@ -10,7 +10,7 @@ EMBEDDINGS_DIR = PROJECT_ROOT / "embeddings"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 DICTIONARY_PATH = DATA_DIR / "twanksta_entries.json"
-SYSTEM_PROMPT_PATH = PROMPTS_DIR / "system_prompt.txt"
+AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
 # Embedding & Reranking API Configuration
 # Defaults: Jina AI. Override via environment variables for local models (e.g. OVMS + Qwen).

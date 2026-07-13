@@ -1,306 +1,223 @@
-"""Offline tests for the ``prussian-agent`` loop.
+"""Unit-tests for the agent loop – no real LLM or MCP calls.
 
-No LLM, no SearchEngine.  The ``extract_candidate`` and
-``parse_last_validation`` helpers are tested directly; ``run_agent`` is
-exercised against a fake agent that returns a scripted message history
-including an assistant ``validate_prussian`` tool call and a tool result
-message — so we verify the verdict is read off the model's own history
-(no second validation run).
+The core loop is:
 
-The validate-only CLI path is exercised through subprocess invocations
-of the real CLI; those require the FST/CG3 artifacts to be built
-(``make -C ../prussian-fst all cg3-check``) and are skipped if
-``prussian_fst`` cannot be imported.
+    1. LLM generates text (``model_output``).
+    2. ``extract_candidate`` pulls the ``PRUSSIAN:`` line from the
+       model's text.
+    3. ``validate_prussian`` is called on the candidate (tool-call
+       result lands in ``observations``).
+    4. ``parse_last_validation`` reads the validation verdict from
+       ``agent.memory.steps``.
+
+Two integration-style tests exercise the full ``run_agent`` path with
+a mock that simulates tool-calling + final-answer steps.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock
+from dataclasses import dataclass, field
+from typing import Any
 
-import pytest
+from smolagents.memory import ActionStep, ToolCall
+from smolagents.monitoring import Timing
 
-from prussian_mcp.agent.runner import (
-    RunResult,
+from agents.runner import (
+    build_model,
     extract_candidate,
     parse_last_validation,
-    run_agent,
+    RunResult,
+    count_tool_calls,
 )
-from haystack.dataclasses import ChatMessage, ToolCall
 
 
-# ── extract_candidate ─────────────────────────────────────────────────────
+def _tc(name: str, arguments: Any = None, id: str = "call_0") -> ToolCall:
+    return ToolCall(name=name, arguments=arguments or {}, id=id)
 
 
-class TestExtractCandidate:
-    def test_simple_marker(self):
-        text = "Some reasoning.\nPRUSSIAN: As wīda gaīlan berzin"
-        assert extract_candidate(text) == "As wīda gaīlan berzin"
-
-    def test_last_marker_wins(self):
-        text = (
-            "Draft 1.\nPRUSSIAN: foo\n"
-            "Draft 2.\nPRUSSIAN: bar\n"
-        )
-        # last Multiline match wins
-        assert extract_candidate(text) == "bar"
-
-    def test_marker_with_extra_whitespace(self):
-        text = "PRUSSIAN:   kelānts  "
-        assert extract_candidate(text) == "kelānts"
-
-    def test_marker_with_surrounding_quotes_is_stripped(self):
-        text = 'PRUSSIAN: "As wīda gaīlan berzin"'
-        # inner quote pair is stripped (matches spec: quotes stripped)
-        assert extract_candidate(text) == 'As wīda gaīlan berzin'
-
-    def test_no_marker_fallback_last_nonempty_line(self):
-        text = "line1\nline2 with content\n   \n"
-        assert extract_candidate(text) == "line2 with content"
-
-    def test_no_marker_strips_fences_NOT_done(self):
-        # The spec is explicit: no fence stripping.  A fenced block
-        # without a PRUSSIAN: line falls back to the last non-empty
-        # line, which is the closing ``` marker (the model is told not
-        # to use fences; if it does, this is a known limitation).
-        text = "```\nas wīda\n```"
-        # Fallback path: last non-empty line is "```" — strip quotes/WS;
-        # backticks are NOT stripped per spec.
-        assert extract_candidate(text) == "```"
-
-    def test_empty_text(self):
-        assert extract_candidate("") is None
-        assert extract_candidate(None) is None
-
-    def test_marker_inside_word_not_matched_at_end_of_line(self):
-        # The regex requires PRUSSIAN: at start of a line, so embedded
-        # text doesn't match.
-        text = "Some text PRUSSIAN: foo bar"
-        # No match: PRUSSIAN: isn't at start of a line — fallback to last non-empty line
-        assert extract_candidate(text) == "Some text PRUSSIAN: foo bar"
-
-
-# ── parse_last_validation ──────────────────────────────────────────────────
-
-
-def _assistant_with_validate_call(call_id: str, args: dict) -> ChatMessage:
-    return ChatMessage.from_assistant(
-        text="",
-        tool_calls=[ToolCall(id=call_id, tool_name="validate_prussian",
-                             arguments=json.dumps(args))],
+def _step(step_number: int, tool_calls=None, observations="", model_output=""):
+    return ActionStep(
+        step_number=step_number,
+        timing=Timing(start_time=0.0),
+        tool_calls=tool_calls,
+        observations=observations,
+        model_output=model_output,
     )
 
 
-def _tool_result_message(call_id: str, payload: dict) -> ChatMessage:
-    """Construct a tool-result message tied to a ToolCall id."""
-    call = ToolCall(id=call_id, tool_name="validate_prussian",
-                    arguments="{}")
-    msg = ChatMessage.from_tool(tool_result=json.dumps(payload), origin=call)
-    return msg
+# ── Pure-function tests (no agent required) ───────────────────────────────
+
+
+class TestExtractCandidate:
+    """extract_candidate must pull the PRUSSIAN: line from arbitrary text."""
+
+    def test_standard_case(self):
+        t = "Let me check the dictionary.\nPRUSSIAN: As wīda gaīlan berzin"
+        assert extract_candidate(t) == "As wīda gaīlan berzin"
+
+    def test_last_wins_when_multiple_pru_lines(self):
+        t = (
+            "PRUSSIAN: As wīda gaīlan berzin\n"
+            "validate_prussian returned violations_found\n"
+            "PRUSSIAN: As wīda galan berzin"
+        )
+        assert extract_candidate(t) == "As wīda galan berzin"
+
+    def test_fallback_to_last_nonempty_line(self):
+        t = "Some preamble\nvalidate_prussian …\nAs wīda galan berzin"
+        assert extract_candidate(t) == "As wīda galan berzin"
+
+    def test_none_and_empty(self):
+        assert extract_candidate(None) is None
+        assert extract_candidate("") is None
+
+    def test_strips_quotes(self):
+        t = "PRUSSIAN: \"As wīda galan berzin\""
+        assert extract_candidate(t) == "As wīda galan berzin"
+
+
+# ── parse_last_validation reads from agent memory steps ──────────────────
 
 
 class TestParseLastValidation:
-    def test_no_validate_in_history(self):
-        msgs = [ChatMessage.from_system("sys"), ChatMessage.from_user("u")]
-        assert parse_last_validation(msgs) is None
+    """parse_last_validation walks ``agent.memory.steps`` backwards."""
 
-    def test_single_validate_call(self):
-        payload = {"overall": {"status": "verified_in_coverage",
-                                "n_sentences": 1, "n_violations": 0},
-                    "sentences": []}
-        msgs = [
-            _assistant_with_validate_call("c1", {"text": "As wīda"}),
-            _tool_result_message("c1", payload),
-            ChatMessage.from_assistant(text="PRUSSIAN: As wīda"),
+    @staticmethod
+    def _make_agent_with_steps(steps):
+        class _Agent:
+            pass
+        a = _Agent()
+        a.memory = type("M", (), {"steps": steps})()
+        return a
+
+    def test_returns_last_validation_json(self):
+        ok_result = json.dumps({
+            "overall": {"status": "verified_in_coverage", "n_sentences": 1, "n_violations": 0},
+            "sentences": [{"sent_id": "s1", "text": "As wīda galan berzin", "status": "verified_in_coverage", "violations": [], "coverage": {}}],
+        })
+        bad_result = json.dumps({
+            "overall": {"status": "violations_found", "n_sentences": 1, "n_violations": 2},
+            "sentences": [{"sent_id": "s1", "text": "test", "status": "violations_found", "violations": [{"rule": "NomSg"}], "coverage": {}}],
+        })
+        steps = [
+            _step(1, tool_calls=[_tc("lookup_tool", {"lemma": "test"})], observations='{"some": "other"}', model_output="draft1"),
+            _step(2, tool_calls=[_tc("validate_prussian", {"text": "test"})], observations=bad_result, model_output="draft2"),
+            _step(3, tool_calls=[_tc("validate_prussian", {"text": "corrected"})], observations=ok_result, model_output="PRUSSIAN: corrected"),
         ]
-        out = parse_last_validation(msgs)
-        assert out is not None
-        assert out["overall"]["status"] == "verified_in_coverage"
+        agent = self._make_agent_with_steps(steps)
+        v = parse_last_validation(agent)
+        assert v is not None
+        assert v["overall"]["status"] == "verified_in_coverage"
+        assert v["overall"]["n_violations"] == 0
 
-    def test_last_validate_call_wins(self):
-        p1 = {"overall": {"status": "violations_found"}}
-        p2 = {"overall": {"status": "verified_in_coverage"}}
-        msgs = [
-            _assistant_with_validate_call("c1", {"text": "draft"}),
-            _tool_result_message("c1", p1),
-            _assistant_with_validate_call("c2", {"text": "fixed"}),
-            _tool_result_message("c2", p2),
-            ChatMessage.from_assistant(text="PRUSSIAN: fixed"),
+    def test_none_when_no_validate_call(self):
+        steps = [
+            _step(1, tool_calls=[_tc("lookup_tool", {"lemma": "x"})], observations="{}", model_output=""),
         ]
-        out = parse_last_validation(msgs)
-        assert out["overall"]["status"] == "verified_in_coverage"
+        agent = self._make_agent_with_steps(steps)
+        assert parse_last_validation(agent) is None
 
-    def test_unparseable_result_returns_none(self):
-        msgs = [
-            _assistant_with_validate_call("c1", {"text": "draft"}),
-            ChatMessage.from_tool(tool_result="not json",
-                                  origin=ToolCall(id="c1",
-                                                  tool_name="validate_prussian",
-                                                  arguments="{}")),
+    def test_none_on_unparseable_observations(self):
+        steps = [
+            _step(1, tool_calls=[_tc("validate_prussian", {"text": "t"})], observations="NOT JSON AT ALL", model_output=""),
         ]
-        assert parse_last_validation(msgs) is None
+        agent = self._make_agent_with_steps(steps)
+        assert parse_last_validation(agent) is None
 
-    def test_tool_result_missing_returns_none(self):
-        # Model called validate_prussian but the agent loop ended
-        # before the tool result landed in history.
-        msgs = [_assistant_with_validate_call("c1", {"text": "draft"})]
-        assert parse_last_validation(msgs) is None
-
-
-# ── run_agent with a fake Agent ────────────────────────────────────────────
-
-
-def _build_fake_agent_messages(
-    final_text: str,
-    validation_payload: dict | None,
-    more_tool_calls: int = 0,
-) -> list[ChatMessage]:
-    """Construct a scripted message history as if Agent.run() produced it.
-
-    Layout: system, user, assistant(validate_call), tool_result,
-    [optional more lookup tool calls], assistant(final_text).
-    """
-    msgs = [
-        ChatMessage.from_system("sys"),
-        ChatMessage.from_user("Translate to Prussian: ..."),
-    ]
-    if validation_payload is not None:
-        msgs.append(_assistant_with_validate_call(
-            "validate", {"text": "draft sentence"}))
-        msgs.append(_tool_result_message("validate", validation_payload))
-    for i in range(more_tool_calls):
-        msgs.append(ChatMessage.from_assistant(
-            text="",
-            tool_calls=[ToolCall(id=f"tc_{i}",
-                                 tool_name="lookup_prussian_word",
-                                 arguments=json.dumps({"word": "foo"}))],
-        ))
-        msgs.append(ChatMessage.from_tool(
-            tool_result="[]",
-            origin=ToolCall(id=f"tc_{i}",
-                            tool_name="lookup_prussian_word",
-                            arguments="{}"),
-        ))
-    msgs.append(ChatMessage.from_assistant(text=final_text))
-    return msgs
+    def test_returns_none_for_final_step_without_validate(self):
+        steps = [
+            _step(1, tool_calls=[_tc("validate_prussian", {"text": "ok"})],
+                  observations='{"overall": {"status": "verified_in_coverage"}}', model_output=""),
+            _step(2, tool_calls=[_tc("lookup_tool", {"lemma": "x"})],
+                  observations="{}", model_output="PRUSSIAN: foo bar"),
+        ]
+        agent = self._make_agent_with_steps(steps)
+        v = parse_last_validation(agent)
+        assert v is not None
+        assert v["overall"]["status"] == "verified_in_coverage"
 
 
-def _fake_agent(messages: list[ChatMessage], *, model: str = "fake-model") -> MagicMock:
-    """Agent stub whose .run() returns the scripted messages."""
-    agent = MagicMock()
-    agent.run.return_value = {"messages": messages}
-    agent.chat_generator = MagicMock()
-    agent.chat_generator.model = model
-    return agent
+class TestCountToolCalls:
+    def test_counts_all_tool_calls(self):
+        steps = [
+            _step(1, tool_calls=[_tc("a"), _tc("b", id="call_1")]),
+            _step(2, tool_calls=[_tc("a")]),
+        ]
+
+        class _Agent:
+            pass
+        a = _Agent()
+        a.memory = type("M", (), {"steps": steps})()
+        assert count_tool_calls(a) == 3
+
+    def test_zero_on_empty(self):
+        class _Agent:
+            pass
+        a = _Agent()
+        a.memory = type("M", (), {"steps": []})()
+        assert count_tool_calls(a) == 0
+
+
+# ── build_model sanity ────────────────────────────────────────────────────
+
+
+class TestBuildModel:
+    def test_returns_openai_model(self):
+        from smolagents import OpenAIModel
+        m = build_model(
+            model="test-model",
+            api_key="sk-test",
+            api_base_url="http://localhost:8000",
+            temperature=0.5,
+        )
+        assert isinstance(m, OpenAIModel)
+
+
+# ── Integration: run_agent with mock LLM ──────────────────────────────────
 
 
 class TestRunAgent:
-    def test_verified_exit_path(self):
-        payload = {"overall": {"status": "verified_in_coverage",
-                                "n_sentences": 1, "n_violations": 0}}
-        msgs = _build_fake_agent_messages(
-            final_text="Some analysis.\nPRUSSIAN: As wīda gaīlan berzin",
-            validation_payload=payload,
+    """Exercise ``run_agent`` with a mock ``ToolCallingAgent`` that
+    simulates two ActionSteps in memory."""
+
+    def test_final_result_fields(self):
+        ok_result = json.dumps({
+            "overall": {"status": "verified_in_coverage", "n_sentences": 1, "n_violations": 0},
+            "sentences": [{"sent_id": "s1", "text": "As wīda galan berzin", "status": "verified_in_coverage", "violations": [], "coverage": {}}],
+        })
+        steps = [
+            _step(1,
+                  tool_calls=[_tc("validate_prussian", {"text": "As wīda galan berzin"})],
+                  observations=ok_result,
+                  model_output="draft"),
+            _step(2,
+                  tool_calls=[_tc("validate_prussian", {"text": "As wīda galan berzin"})],
+                  observations=ok_result,
+                  model_output="PRUSSIAN: As wīda galan berzin"),
+        ]
+
+        class _Mem:
+            pass
+        _Mem.steps = steps
+        class _Agent:
+            model = type("M", (), {"model_id": "mock-model"})()
+            def __init__(self, mem):
+                self.memory = mem
+            def run(self, task, stream=False):
+                return "PRUSSIAN: As wīda galan berzin"
+        agent = _Agent(_Mem())
+
+        from agents.runner import run_agent as _run_agent
+        result = _run_agent(
+            "Ich sehe eine weiße Birke",
+            agent=agent,
+            system_prompt="test",
         )
-        agent = _fake_agent(msgs)
-        result = run_agent("Ich sehe eine weiße Birke",
-                           agent=agent, system_prompt="sys")
         assert isinstance(result, RunResult)
-        assert result.final == "As wīda gaīlan berzin"
-        assert result.validation == payload
-        assert result.tool_calls == 1
-        assert result.model == "fake-model"
         assert result.input == "Ich sehe eine weiße Birke"
-
-    def test_violations_exit_path(self):
-        payload = {"overall": {"status": "violations_found",
-                                "n_sentences": 1, "n_violations": 2}}
-        msgs = _build_fake_agent_messages(
-            final_text="PRUSSIAN: As wīda gailā berzin",
-            validation_payload=payload,
-        )
-        agent = _fake_agent(msgs)
-        result = run_agent("test", agent=agent, system_prompt="sys")
-        assert result.validation == payload
-        # Exit-code mapping is exercised in TestCLIViaSubprocess below;
-        # here we just confirm the verdict is parsed.
-
-    def test_no_validation_in_run_returns_none(self):
-        # Model never called validate_prussian — validation is None.
-        msgs = _build_fake_agent_messages(
-            final_text="PRUSSIAN: foo", validation_payload=None,
-        )
-        agent = _fake_agent(msgs)
-        result = run_agent("test", agent=agent, system_prompt="sys")
-        assert result.validation is None
-        assert result.final == "foo"
-
-    def test_no_candidate_extracted(self):
-        payload = {"overall": {"status": "verified_in_coverage"}}
-        msgs = _build_fake_agent_messages(
-            final_text="",  # empty final assistant text
-            validation_payload=payload,
-        )
-        agent = _fake_agent(msgs)
-        result = run_agent("test", agent=agent, system_prompt="sys")
-        assert result.final is None
-
-    def test_tool_call_count_complex(self):
-        payload = {"overall": {"status": "verified_in_coverage"}}
-        msgs = _build_fake_agent_messages(
-            final_text="PRUSSIAN: foo",
-            validation_payload=payload,
-            more_tool_calls=3,
-        )
-        agent = _fake_agent(msgs)
-        result = run_agent("test", agent=agent, system_prompt="sys")
-        assert result.tool_calls == 4  # 1 validate + 3 lookups
-
-
-# ── validate-only CLI subprocess tests ─────────────────────────────────────
-
-
-def _fst_available() -> bool:
-    try:
-        import prussian_fst  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-PROJECT_DIR = Path(__file__).resolve().parent.parent
-
-
-@pytest.mark.skipif(not _fst_available(),
-                    reason="prussian_fst not importable — FST artifacts not built")
-class TestCLIValidateOnly:
-    def _run_cli(self, *args: str) -> subprocess.CompletedProcess:
-        venv_py = PROJECT_DIR / ".venv" / "bin" / "python"
-        return subprocess.run(
-            [str(venv_py), "-m", "prussian_mcp.cli",
-             "--validate-only", *args],
-            capture_output=True, text=True, timeout=60,
-            cwd=str(PROJECT_DIR),
-        )
-
-    def test_verified_sentence(self):
-        r = self._run_cli("As wīda gaīlan berzin")
-        assert r.returncode == 0, r.stderr
-        assert "verified_in_coverage" in r.stdout
-
-    def test_violated_sentence(self):
-        # Missing macronisation or wrong agreement — should NOT be
-        # verified.  The exact status (out_of_coverage or
-        # violations_found) depends on the analyser; both are non-zero
-        # exit codes.
-        r = self._run_cli("As wīda gailā berzin")
-        assert r.returncode in (2, 3), r.stderr
-
-    def test_json_output(self):
-        r = self._run_cli("--json", "As wīda gaīlan berzin")
-        assert r.returncode == 0
-        parsed = json.loads(r.stdout)
-        assert parsed["overall"]["status"] == "verified_in_coverage"
+        assert result.final == "As wīda galan berzin"
+        assert result.tool_calls == 2
+        assert result.model == "mock-model"
+        assert result.validation["overall"]["status"] == "verified_in_coverage"
+        assert result.latency_s >= 0

@@ -3,7 +3,7 @@
 Examples::
 
     prussian-agent "Ich sehe eine weiße Birke"
-    prussian-agent "…" --json --trace
+    prussian-agent "…" --json
     prussian-agent --validate-only "As wīda gaīlan berzin"
     prussian-agent "…" --mcp-url https://strfry.org/prussian-mcp/mcp
     prussian-agent "…" --system-prompt prompts/agent_system_en.md \\
@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import traceback
 from pathlib import Path
@@ -42,17 +41,8 @@ STATUS_TO_EXIT = {
 
 
 def load_system_prompt(path: Path) -> str:
-    """Extract the first fenced ``` block from a markdown prompt file.
-
-    Same convention as ``haystack_runner.load_system_prompt`` (Z.60–65):
-    prompts live inside a markdown code fence so the surrounding prose
-    can document them.  Keep the fence intact when editing the prompt.
-    """
-    text = path.read_text(encoding="utf-8")
-    m = re.search(r"^```\s*\n(.*?)^```", text, re.DOTALL | re.MULTILINE)
-    if not m:
-        raise RuntimeError(f"no fenced code block in {path}")
-    return m.group(1).strip()
+    """Load the system prompt from a text/markdown file."""
+    return path.read_text(encoding="utf-8").strip()
 
 
 def _exit_code_from_validation(validation: dict | None) -> int:
@@ -81,32 +71,14 @@ def _build_env_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", ""),
                     help="API key (default: $OPENAI_API_KEY).")
     ap.add_argument("--max-steps", type=int, default=30,
-                    help="max_agent_steps for the Haystack Agent (default: 30).")
+                    help="max steps for the agent (default: 30).")
     ap.add_argument("--temperature", type=float, default=0.2,
                     help="LLM sampling temperature (default: 0.2).")
-    ap.add_argument("--llm-timeout", type=float, default=300.0,
-                    help="per-request timeout for the LLM, seconds (default: 300).")
-    ap.add_argument("--llm-retries", type=int, default=2,
-                    help="OpenAI client max_retries (default: 2).")
     ap.add_argument("--json", action="store_true",
                     help="emit a JSON result on stdout instead of plain text.")
-    ap.add_argument("--trace", action="store_true",
-                    help="print a compact per-message trace to stderr.")
-    stream_group = ap.add_mutually_exclusive_group()
-    stream_group.add_argument("--stream", dest="stream",
-                              action="store_true", default=None,
-                              help="live-stream model output to stderr.")
-    stream_group.add_argument("--no-stream", dest="stream",
-                              action="store_false",
-                              help="disable live streaming.")
     ap.add_argument("--mcp-url", default=None,
-                    help="use a remote MCPToolset instead of the in-process "
-                         "tools (requires the `remote` extra: "
-                         "`uv sync --extra remote`).")
-    ap.add_argument("--mcp-timeout", type=int, default=30,
-                    help="MCP server connection timeout, seconds (default: 30).")
-    ap.add_argument("--invocation-timeout", type=float, default=60.0,
-                    help="MCP tool invocation timeout, seconds (default: 60).")
+                    help="use a remote MCP server instead of the in-process "
+                         "tools.")
     ap.add_argument("--system-prompt", type=Path, default=DEFAULT_PROMPT,
                     help="path to the system-prompt markdown file (default: "
                          "prompts/agent_system_en.md).")
@@ -138,12 +110,10 @@ def _run_validate_only(args: argparse.Namespace) -> int:
     except (ValueError, TypeError):
         parsed = None
     if args.json:
-        # Echo the validate_prussian JSON payload verbatim.
         sys.stdout.write(raw if isinstance(raw, str) else json.dumps(raw))
         if not sys.stdout.write("\n"):
             pass
     else:
-        # Human-readable: print overall status + per-sentence statuses.
         if parsed and "overall" in parsed:
             overall = parsed["overall"]
             print(f"overall: {overall.get('status')} "
@@ -159,39 +129,22 @@ def _run_validate_only(args: argparse.Namespace) -> int:
 
 def _build_toolset(args: argparse.Namespace):
     """Return (toolset, is_remote).  In-process is default; --mcp-url
-    switches to MCPToolset."""
+    switches to smolagents MCPClient."""
     if args.mcp_url:
         try:
-            from haystack_integrations.tools.mcp import (
-                MCPToolset,
-                StreamableHttpServerInfo,
-            )
+            from smolagents import ToolCollection
         except ImportError as e:
             raise SystemExit(
-                f"--mcp-url requires the `remote` extra: {e}\n"
-                "  uv sync --extra remote"
+                f"--mcp-url requires smolagents: {e}\n"
+                "  uv sync"
             )
-        from .agent.tools import _prune_bool_defaults
-        server_info = StreamableHttpServerInfo(
-            url=args.mcp_url,
-            timeout=args.mcp_timeout,
+        tool_collection = ToolCollection.from_mcp(
+            {"url": args.mcp_url, "transport": "streamable-http"},
+            trust_remote_code=True,
         )
-        toolset = MCPToolset(
-            server_info=server_info,
-            connection_timeout=float(args.mcp_timeout),
-            invocation_timeout=args.invocation_timeout,
-            eager_connect=True,
-        )
-        # Prune boolean defaults from the MCP tool schemas (mirrors
-        # haystack_runner.py Z.505–510).
-        for tool in toolset.tools:
-            removed = _prune_bool_defaults(tool.parameters)
-            if removed:
-                print(f"  pruned bool defaults from {tool.name}: {removed}",
-                      file=sys.stderr)
-        return toolset, True
+        return list(tool_collection.tools), True
     # In-process default — lazy SearchEngine import inside the factory.
-    from .agent.tools import build_local_toolset
+    from .tools import build_local_toolset
     return build_local_toolset(), False
 
 
@@ -208,9 +161,6 @@ def main(argv: list[str] | None = None) -> int:
     # Resolve model/base-url/api-key with sane fallbacks.
     api_key = args.api_key or os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
-        # Many local providers tolerate a placeholder; HF router requires
-        # a real token.  We let it through to give a provider-side error
-        # rather than a CLI-side one (consistent with old runners).
         print("warning: OPENAI_API_KEY not set — most providers will reject "
               "the request", file=sys.stderr)
     base_url = args.base_url or os.environ.get("OPENAI_BASE_URL", "")
@@ -238,33 +188,23 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
         return 1
 
-    # Generator + Agent.
-    from .agent.runner import build_agent, build_generator, make_stream_callback, run_agent
+    # Model + Agent.
+    from .runner import build_agent, build_model, run_agent
 
-    generator = build_generator(
+    llm_model = build_model(
         model=model,
         api_key=api_key,
         api_base_url=base_url,
-        tools=toolset,
         temperature=args.temperature,
-        timeout=args.llm_timeout,
-        max_retries=args.llm_retries,
     )
-    agent = build_agent(generator, toolset, max_steps=args.max_steps)
-
-    # Streaming default: stdout TTY and not --json.
-    should_stream = args.stream if args.stream is not None else (
-        sys.stdout.isatty() and not args.json
-    )
-    stream_cb = make_stream_callback("0") if should_stream else None
+    agent = build_agent(llm_model, toolset, max_steps=args.max_steps,
+                        instructions=system_prompt)
 
     try:
         result = run_agent(
             args.sentence,
             agent=agent,
             system_prompt=system_prompt,
-            stream_cb=stream_cb,
-            trace=args.trace,
         )
     except Exception as e:
         print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
