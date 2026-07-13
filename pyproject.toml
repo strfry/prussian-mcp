@@ -6,11 +6,12 @@ readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
     "mcp>=1.28",
-    "numpy>=2.5.1",
+    "numpy==2.0.2",
     "openai>=2.45.0",
     "prussian-fst",
     "pyhfst>=1.4.0",
     "smolagents>=1.26",
+    "pillow>=10.0.1,<11.0.0",
 ]
 
 [project.optional-dependencies]
