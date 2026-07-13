@@ -8,7 +8,8 @@ all: download
 # --- Download ---
 
 $(DICT_FILE):
-	$(VENV_PYTHON) scripts/download_twanksta_entries.py
+	mkdir -p data
+	curl -L -o $@ https://github.com/strfry/prussian-corpus/releases/latest/download/$(notdir $@)
 
 download: $(DICT_FILE)
 
