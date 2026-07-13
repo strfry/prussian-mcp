@@ -319,10 +319,11 @@ def forms_with_tags(engine: Any, entry: dict) -> list[dict]:
         info = analyses.get(form, {})
         fst_analyses = info.get("analyses", [])  # [(lemma, tags)]
 
-        # Keep only analyses matching the entry lemma
+        # Keep analyses matching the entry lemma, plus Adv readings
+        # (adverbs are their own lemma in the FST)
         matching_tags: list[str] = []
         for lemma, tags in fst_analyses:
-            if lemma.lower() == entry_lemma:
+            if lemma.lower() == entry_lemma or "Adv" in tags:
                 matching_tags.append("+".join(tags))
 
         pgr = pgr_by_form.get(fl, "")
