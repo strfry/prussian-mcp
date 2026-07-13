@@ -518,13 +518,20 @@ def validate_prussian(text: str, include_conllu: bool = False) -> str:
       one check family applied to the sentence.
     - "out_of_coverage" does NOT mean correct — the checker simply
       cannot verify (unknown words, collapsed analyses, residual
-      ambiguity, or no applicable check; see coverage.reasons).
-      Never treat it as approval.
+      ambiguity, no applicable check, or a nominal whose case has no
+      licensing context — reason "unlicensed_case"; see
+      coverage.reasons).  Never treat it as approval.
     - "violations_found": each violations[] entry names the rule, the
       offending form (with index and surviving reading), a message, and
-      a severity — "error" (case government / valency / person clash)
-      is reliable; "warning" (adjective agreement, nominative in PP)
-      is often a loanword paradigm gap rather than a real error.
+      a severity — "error" (case government / valency / person or
+      number clash) is reliable; "warning" (adjective agreement,
+      nominative in PP, duplicate subject) is often a loanword paradigm
+      gap rather than a real error.
+
+    CoNLL-U note: the fallback deprel "dep" means the token could not
+    be attached with a licensed relation; sentences with free-floating
+    nominals degrade to out_of_coverage (unlicensed_case), never to
+    verified.
     """
     return validate_tool(text, include_conllu=include_conllu)
 
