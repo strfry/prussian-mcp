@@ -96,9 +96,11 @@ print(f"  Example: {texts[100]}")
 print(f"  Example: {texts[1000]}")
 
 # Connect to embedding server
+base_url = RERANK_BASE_URL.rstrip("/")
+base_url += "/v1"
 client = OpenAI(
     api_key=RERANK_API_KEY or "dummy",
-    base_url=RERANK_BASE_URL,
+    base_url=base_url,
 )
 
 # Generate embeddings in batches (resumable)
