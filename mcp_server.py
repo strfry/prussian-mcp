@@ -13,6 +13,8 @@ from starlette.responses import Response, StreamingResponse
 
 import prussian_engine
 from prussian_engine.fsg_check import check_fsg_pipeline
+from prussian_engine.fsg_check import run_fsg_check
+from prussian_engine.validate import run_validate
 from prussian_engine.config import (
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -530,6 +532,93 @@ def validate_prussian(text: str, include_conllu: bool = False) -> str:
       gap rather than a real error.
     """
     return validate_tool(text, include_conllu=include_conllu)
+
+
+@mcp.tool()
+def validate_prussian(text: str) -> dict:
+    """
+    Grammar-check Prussian text with the CG3 validator (three-valued verdict).
+    Use this to judge whether a generated/written Prussian sentence is
+    well-formed; use fsg_check when you want the full dependency analysis.
+
+    Args:
+        text: Prussian sentence(s) to validate (one or more sentences)
+
+    Returns:
+        {overall_status, sentences: [{sent_id, text, status, violations,
+        coverage}]} where status is one of:
+        - violations_found: a grammar rule flagged an error (violations
+          carry rule id, token index/form, severity error|warning, message)
+        - verified_in_coverage: no flags AND the analysis is trustworthy
+          (no unknown words, no reading collapse, low residual ambiguity,
+          at least one applicable check)
+        - out_of_coverage: the validator cannot judge this sentence
+          (coverage.reasons: oov / collapsed / no_applicable_checks /
+          residual_ambiguity)
+
+        IMPORTANT: out_of_coverage does NOT mean the sentence is correct —
+        never treat it as a pass. Only verified_in_coverage is a positive
+        signal. severity=warning flags (adjective agreement, PP nominative)
+        are often loanword paradigm gaps rather than true errors.
+    """
+    return run_validate(text)
+
+
+# ── Static Files ────────────────────────────────────────────────────────────────
+
+static_dir = Path(__file__).parent / "ui"
+
+if static_dir.exists():
+
+    @mcp.custom_route("/chatbot.html", methods=["GET"])
+    async def serve_chatbot_html(request):
+        """Serve the chatbot HTML page."""
+        return FileResponse(static_dir / "chatbot.html")
+
+    @mcp.custom_route("/chatbot.js", methods=["GET"])
+    async def serve_chatbot_js(request):
+        """Serve the chatbot JavaScript."""
+        return FileResponse(
+            static_dir / "chatbot.js", media_type="application/javascript"
+        )
+
+    @mcp.custom_route("/mcp-client.js", methods=["GET"])
+    async def serve_mcp_client_js(request):
+        """Serve the MCP client JavaScript."""
+        return FileResponse(
+            static_dir / "mcp-client.js", media_type="application/javascript"
+        )
+
+    @mcp.custom_route("/chat-engine.js", methods=["GET"])
+    async def serve_chat_engine_js(request):
+        """Serve the chat engine JavaScript."""
+        return FileResponse(
+            static_dir / "chat-engine.js", media_type="application/javascript"
+        )
+
+    @mcp.custom_route("/lib/react-engine.js", methods=["GET"])
+    async def serve_react_engine_js(request):
+        """Serve the ReAct engine JavaScript."""
+        lib_path = static_dir.parent / "lib" / "react-engine.js"
+        return FileResponse(lib_path, media_type="application/javascript")
+
+    @mcp.custom_route("/images/{filename}", methods=["GET"])
+    async def serve_images(request):
+        """Serve image files."""
+        filename = request.path_params.get("filename", "")
+        if ".." in filename or "/" in filename:
+            return Response("Invalid filename", status_code=400)
+
+        image_path = static_dir / "images" / filename
+        if image_path.exists() and image_path.is_file():
+            mime_type, _ = mimetypes.guess_type(str(image_path))
+            return FileResponse(image_path, media_type=mime_type)
+        return Response("Image not found", status_code=404)
+
+    print(f"Serving static files from: {static_dir}")
+else:
+    print(f"Warning: Static directory not found: {static_dir}")
+>>>>>>> claude/mcp-fsg-cg-tool-signature-qq1kx4
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

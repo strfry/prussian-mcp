@@ -85,7 +85,7 @@ python mcp_server.py
 ```
 - **Transport**: stdio (pure MCP protocol)
 - **No LLM needed** - just dictionary tools
-- 4 MCP tools available:
+- 5 MCP tools available:
   - `search_dictionary` - Semantic search
   - `lookup_prussian_word` - Word lookup
   - `get_word_forms` - Declensions/conjugations
@@ -185,6 +185,15 @@ Features:
   Requires a built prussian-fst checkout (`fst/build/base.fst`) plus
   `vislcg3`/`hfst-flookup` on PATH; location via `PRUSSIAN_FST_DIR`
   (default: sibling directory `../prussian-fst`).
+- `validate_prussian(text)` - Grammar validation via the ADD-only CG3
+  validator pass (`validator.cg3`, Divvun-style `&`-error tags). Returns a
+  **three-valued** verdict per sentence: `violations_found` (with rule id,
+  token, severity `error|warning`, message), `verified_in_coverage` (clean
+  AND trustworthy: no OOV, no reading collapse, low residual ambiguity, at
+  least one applicable check), or `out_of_coverage` (abstention, with
+  `coverage.reasons`). `out_of_coverage` must NOT be treated as "correct" —
+  only `verified_in_coverage` is a positive signal. Same prussian-fst
+  requirements as `fsg_check`.
 
 ## Architecture
 
