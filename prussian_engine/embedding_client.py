@@ -5,8 +5,8 @@ import numpy as np
 from typing import List, Dict, Any
 
 from .config import (
-    RERANK_API_KEY,
-    RERANK_BASE_URL,
+    API_KEY,
+    API_BASE_URL,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
     RERANKER_MODEL,
@@ -24,8 +24,8 @@ class EmbeddingClient:
         embedding_dim: int = None,
         reranker_model: str = None,
     ):
-        self.api_key = api_key or RERANK_API_KEY
-        self.base_url = (base_url or RERANK_BASE_URL).rstrip("/")
+        self.api_key = api_key or API_KEY
+        self.base_url = (base_url or API_BASE_URL).rstrip("/")
         self.embedding_model = embedding_model or EMBEDDING_MODEL
         self.embedding_dim = embedding_dim or EMBEDDING_DIM
         self.reranker_model = reranker_model or RERANKER_MODEL

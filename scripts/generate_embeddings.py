@@ -11,14 +11,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from prussian_engine.config import (
     EMBEDDING_BACKEND,
-    MODEL2VEC_MODEL,
-    RERANK_EMBEDDING_MODEL,
-    RERANK_BASE_URL,
+    EMBEDDING_MODEL,
+    API_BASE_URL,
     DICTIONARY_PATH,
     EMBEDDINGS_DIR,
     EMBEDDINGS_PATH,
     PASSAGE_PREFIX,
-    RERANK_API_KEY,
 )
 from prussian_engine.embedder import get_embedder
 
@@ -64,10 +62,10 @@ def main():
     print("=" * 60)
     print(f"Backend:  {EMBEDDING_BACKEND}")
     if EMBEDDING_BACKEND == "model2vec":
-        print(f"Model:    {MODEL2VEC_MODEL}")
+        print(f"Model:    {EMBEDDING_MODEL}")
     else:
-        print(f"Model:    {RERANK_EMBEDDING_MODEL}")
-        print(f"API:      {RERANK_BASE_URL}")
+        print(f"Model:    {EMBEDDING_MODEL}")
+        print(f"API:      {API_BASE_URL}")
     print(f"Strategy: translations_only")
     print(f"Batch:    {BATCH_SIZE}")
     print("=" * 60)
@@ -147,8 +145,8 @@ def main():
 
     metadata = {
         "backend": EMBEDDING_BACKEND,
-        "model": MODEL2VEC_MODEL if EMBEDDING_BACKEND == "model2vec" else RERANK_EMBEDDING_MODEL,
-        "provider": "local" if EMBEDDING_BACKEND == "model2vec" else RERANK_BASE_URL,
+        "model": EMBEDDING_MODEL,
+        "provider": "local" if EMBEDDING_BACKEND == "model2vec" else API_BASE_URL,
         "strategy": "translations_only",
         "num_entries": len(filtered_entries),
         "embedding_dim": int(embeddings.shape[1]),

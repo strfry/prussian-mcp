@@ -14,13 +14,27 @@ AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
 # ── Embedding backend ────────────────────────────────────────────────────────
 # "model2vec" -> local, CPU-only static embeddings (default, no API needed)
-# "api"       -> remote OpenAI-/Jina-compatible embedding endpoint (legacy)
+# "api"       -> remote OpenAI-/Jina-compatible embedding endpoint
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "model2vec").lower()
 
-# model2vec model: a HuggingFace id or a local directory produced with
-# StaticModel.save_pretrained(). Point MODEL2VEC_MODEL at a local path to run
-# without any HuggingFace access.
-MODEL2VEC_MODEL = os.getenv("MODEL2VEC_MODEL", "minishlab/potion-multilingual-128M")
+# Model name — works for both backends:
+#   model2vec: HuggingFace id or local dir from StaticModel.save_pretrained()
+#   api:       remote model id (e.g. "jina-embeddings-v5-text-small")
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    "minishlab/potion-multilingual-128M"
+    if EMBEDDING_BACKEND == "model2vec"
+    else "jina-embeddings-v5-text-small",
+)
+
+# Embedding dimension — only used by the API backend (model2vec reads it from
+# the loaded model at runtime).
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
+
+# Reranker model (only relevant when API backend is active)
+RERANKER_MODEL = os.getenv(
+    "RERANKER_MODEL", "jina-reranker-v2-base-multilingual"
+)
 
 # Precomputed corpus embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*".
 # They must be generated with the same backend/model used for query encoding.
@@ -30,17 +44,16 @@ _DEFAULT_EMB_NAME = (
 EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", _DEFAULT_EMB_NAME)
 EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 
-# Embedding & Reranking API Configuration (defaults: Jina AI)
-RERANK_API_KEY = os.getenv("RERANK_API_KEY", "") or os.getenv("JINA_API_KEY", "")
-RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "") or os.getenv(
-    "JINA_BASE_URL", "https://api.jina.ai"
+# API server — embedding + reranking endpoints (same server)
+API_KEY = (
+    os.getenv("API_KEY", "")
+    or os.getenv("JINA_API_KEY", "")
+    or os.getenv("RERANK_API_KEY", "")  # backwards-compat
 )
-RERANK_EMBEDDING_MODEL = os.getenv(
-    "RERANK_EMBEDDING_MODEL", "jina-embeddings-v5-text-small"
-)
-RERANK_EMBEDDING_DIM = 1024
-RERANK_RERANKER_MODEL = os.getenv(
-    "RERANK_RERANKER_MODEL", "jina-reranker-v2-base-multilingual"
+API_BASE_URL = (
+    os.getenv("API_BASE_URL", "")
+    or os.getenv("RERANK_BASE_URL", "")  # backwards-compat
+    or os.getenv("JINA_BASE_URL", "https://api.jina.ai")
 )
 
 # Asymmetric search prefixes.

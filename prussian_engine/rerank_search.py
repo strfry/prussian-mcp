@@ -2,11 +2,12 @@
 
 import asyncio
 import re
+import sys
 from typing import Dict, Any, List
 
 from .search import SearchEngine
 from .embedding_client import EmbeddingClient
-from .config import RERANK_API_KEY
+from .config import API_KEY
 
 
 def get_word_type(entry: dict) -> str:
@@ -39,14 +40,16 @@ class RerankedSearchEngine:
     """Two-stage search: embedding retrieval + reranking."""
 
     def __init__(self, use_reranker: bool = True):
-        self.base_engine = SearchEngine()
         self.use_reranker = use_reranker
         if use_reranker:
-            if not RERANK_API_KEY:
-                raise ValueError("RERANK_API_KEY environment variable is required for reranking")
+            if not API_KEY:
+                raise ValueError("API_KEY environment variable is required for reranking")
+            print("Initializing reranker...", file=sys.stderr)
             self.rerank_client = EmbeddingClient()
         else:
             self.rerank_client = None
+        print("Loading search engine...", file=sys.stderr)
+        self.base_engine = SearchEngine()
 
     async def search(
         self,

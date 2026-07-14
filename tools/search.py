@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
             from prussian_engine.rerank_search import RerankedSearchEngine
             reranked_engine = RerankedSearchEngine(use_reranker=True)
         except ValueError:
-            print("warning: RERANK_API_KEY not set — skipping reranker",
+            print("warning: API_KEY not set — skipping reranker",
                   file=sys.stderr)
 
     try:

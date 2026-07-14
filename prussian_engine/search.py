@@ -1,6 +1,7 @@
 """Search engine for Prussian Dictionary using embeddings."""
 
 import json
+import sys
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -8,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from .config import (
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
+    RERANKER_MODEL,
 )
 
 from .embedder import get_embedder
@@ -57,8 +59,11 @@ class SearchEngine:
 
         self.reranker_available = False  # Reranking handled separately
 
+        print("Loading dictionary...", file=sys.stderr)
         self._load_dictionary()
+        print("Loading embeddings...", file=sys.stderr)
         self._load_embeddings()
+        print("Building indices...", file=sys.stderr)
         self._build_indices()
 
     def _load_dictionary(self):
@@ -308,6 +313,7 @@ class SearchEngine:
 
         # Add query prefix
         query_text = f"{QUERY_PREFIX}{query}"
+        print(f"Searching: \"{query}\"", file=sys.stderr)
 
         # Encode query via local embedding server
         query_embedding = self._get_query_embedding(query_text)

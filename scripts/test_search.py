@@ -6,7 +6,7 @@ Tests all three MCP tools end-to-end:
   2. lookup_prussian_word — reverse lookup (all form categories)
   3. get_word_forms        — structured forms + PGR filtering
 
-Also tests optional reranker backend if RERANK_BASE_URL is configured.
+Also tests optional reranker backend if API_BASE_URL is configured.
 
 Usage:
     source env.local.sh && python scripts/test_search.py
@@ -22,11 +22,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from prussian_engine import SearchEngine
 from prussian_engine.config import (
-    RERANK_BASE_URL,
-    RERANK_API_KEY,
+    API_BASE_URL,
+    API_KEY,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
-    EMBEDDING_PREFIX,
+    PASSAGE_PREFIX,
     EMBEDDINGS_PATH,
     RERANKER_MODEL,
 )
@@ -57,7 +57,7 @@ def fmt_status(status):
 
 # ── Connectivity tests ──────────────────────────────────────────────────────
 
-BASE_URL = (RERANK_BASE_URL or "(unset)").rstrip("/")
+BASE_URL = (API_BASE_URL or "(unset)").rstrip("/")
 
 
 def test_embedding_connectivity():
@@ -257,20 +257,20 @@ def test_get_word_forms_filter(engine):
 def main():
     print(f"{BOLD}=== Integration Test: Prussian MCP Features ==={RESET}")
     print(f"  Embedding: {BASE_URL}/v1/embeddings  ({EMBEDDING_MODEL}, dim={EMBEDDING_DIM})")
-    print(f"  Embedding files: {EMBEDDINGS_PATH}.{{entries.json,embeddings.npy}}  (prefix={EMBEDDING_PREFIX})")
-    reranker_url = f"{BASE_URL}/v1/rerank" if RERANK_BASE_URL else "(unset)"
+    print(f"  Embedding files: {EMBEDDINGS_PATH}.{{entries.json,embeddings.npy}}  (prefix={PASSAGE_PREFIX})")
+    reranker_url = f"{BASE_URL}/v1/rerank" if API_BASE_URL else "(unset)"
     reranker_status = f"  Reranker:  {reranker_url}  ({RERANKER_MODEL})"
-    if RERANK_API_KEY:
+    if API_KEY:
         reranker_status += "  [key set]"
     else:
         reranker_status += f"  {YELLOW}[no key — reranked search will SKIP]{RESET}"
     print(reranker_status)
     print()
 
-    reranker_available = bool(RERANK_BASE_URL) and bool(RERANK_API_KEY)
+    reranker_available = bool(API_BASE_URL) and bool(API_KEY)
 
     # ── Phase 1: Connectivity ──────────────────────────────────────────────
-    print(f"{BOLD}── Connectivity{'' if RERANK_BASE_URL else ' (no RERANK_BASE_URL set — tests will SKIP)'} ──{RESET}")
+    print(f"{BOLD}── Connectivity{'' if API_BASE_URL else ' (no API_BASE_URL set — tests will SKIP)'} ──{RESET}")
 
     try:
         elapsed, detail = test_embedding_connectivity()
@@ -285,10 +285,10 @@ def main():
         except Exception as e:
             record(FAIL, "Reranker API", 0, str(e))
     else:
-        record(SKIP, "Reranker API", 0, "RERANK_BASE_URL or RERANK_API_KEY not set")
+        record(SKIP, "Reranker API", 0, "API_BASE_URL or API_KEY not set")
 
     # ── Phase 2: Search Engine init ────────────────────────────────────────
-    print(f"\n{BOLD}── Loading Search Engine{'' if RERANK_BASE_URL else ' (embedding server needed for semantic search)'} ──{RESET}")
+    print(f"\n{BOLD}── Loading Search Engine{'' if API_BASE_URL else ' (embedding server needed for semantic search)'} ──{RESET}")
     try:
         t0 = time.time()
         engine = SearchEngine()
@@ -401,7 +401,7 @@ def main():
         sys.exit(1)
     elif skipped and not passed:
         print(f"\n{YELLOW}No backend available — all tests skipped.{RESET}")
-        print("  Set RERANK_BASE_URL and RERANK_API_KEY via env config (env.local.sh / env.jina.sh).")
+        print("  Set API_BASE_URL and API_KEY via env config (env.local.sh / env.jina.sh).")
         sys.exit(2)
     else:
         print(f"\n{GREEN}All tests passed.{RESET}")

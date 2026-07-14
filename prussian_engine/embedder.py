@@ -16,15 +16,16 @@ embedding generation script::
     embedder.get_embedding(text)      # -> np.ndarray (dim,),   float32, L2-normalized
 """
 
+import sys
 from typing import List, Optional
 
 import numpy as np
 
 from .config import (
     EMBEDDING_BACKEND,
-    MODEL2VEC_MODEL,
-    RERANK_API_KEY,
-    RERANK_EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+    API_KEY,
+    EMBEDDING_DIM,
 )
 
 
@@ -46,7 +47,7 @@ class Model2VecEmbedder:
     """
 
     def __init__(self, model_name: str = None):
-        self.model_name = model_name or MODEL2VEC_MODEL
+        self.model_name = model_name or EMBEDDING_MODEL
         try:
             from model2vec import StaticModel
         except ImportError as exc:  # pragma: no cover - dependency guard
@@ -55,6 +56,7 @@ class Model2VecEmbedder:
                 "Install it with `pip install model2vec`."
             ) from exc
 
+        print(f"Loading embedding model: {self.model_name}...", file=sys.stderr)
         self.model = StaticModel.from_pretrained(self.model_name)
         self.dim = int(self.model.dim)
 
@@ -76,13 +78,13 @@ class ApiEmbedder:
     def __init__(self):
         from .embedding_client import EmbeddingClient
 
-        if not RERANK_API_KEY:
+        if not API_KEY:
             raise ValueError(
-                "RERANK_API_KEY environment variable is required for the 'api' "
+                "API_KEY environment variable is required for the 'api' "
                 "embedding backend"
             )
         self.client = EmbeddingClient()
-        self.dim = RERANK_EMBEDDING_DIM
+        self.dim = EMBEDDING_DIM
 
     def get_embeddings(self, texts: List[str]) -> np.ndarray:
         if not texts:
