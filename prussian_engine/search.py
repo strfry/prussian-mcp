@@ -10,7 +10,7 @@ from .config import (
     QUERY_PREFIX,
 )
 
-from .embedding_client import EmbeddingClient
+from .embedder import get_embedder
 from .pgr import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -53,7 +53,7 @@ class SearchEngine:
         self.form_to_lemma: Dict[str, List[str]] = {}
         self.form_to_pgr: Dict[str, List[str]] = {}
 
-        self.embedding_client = EmbeddingClient()
+        self.embedder = get_embedder()
 
         self.reranker_available = False  # Reranking handled separately
 
@@ -231,9 +231,9 @@ class SearchEngine:
         return []
 
     def _get_query_embedding(self, query_text: str) -> np.ndarray:
-        """Encode query using embedding API."""
+        """Encode query using the configured embedder."""
         try:
-            embedding = self.embedding_client.get_embedding(query_text)
+            embedding = self.embedder.get_embedding(query_text)
             return embedding
         except Exception as e:
             raise RuntimeError(f"Query embedding failed: {e}")

@@ -12,24 +12,38 @@ PROMPTS_DIR = PROJECT_ROOT / "prompts"
 DICTIONARY_PATH = DATA_DIR / "twanksta_entries.json"
 AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
-# Embedding & Reranking API Configuration
-# Defaults: Jina AI. Override via environment variables for local models (e.g. OVMS + Qwen).
-RERANK_API_KEY = os.getenv("RERANK_API_KEY", "")
-RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-embeddings-v5-text-small")
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
-EMBEDDING_PREFIX=os.getenv("EMBEDDING_PREFIX", "embeddings_voyage")
+# ── Embedding backend ────────────────────────────────────────────────────────
+# "model2vec" -> local, CPU-only static embeddings (default, no API needed)
+# "api"       -> remote OpenAI-/Jina-compatible embedding endpoint (legacy)
+EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "model2vec").lower()
 
+# model2vec model: a HuggingFace id or a local directory produced with
+# StaticModel.save_pretrained(). Point MODEL2VEC_MODEL at a local path to run
+# without any HuggingFace access.
+MODEL2VEC_MODEL = os.getenv("MODEL2VEC_MODEL", "minishlab/potion-multilingual-128M")
 
-EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDING_PREFIX
+# Precomputed corpus embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*".
+# They must be generated with the same backend/model used for query encoding.
+_DEFAULT_EMB_NAME = (
+    "embeddings_model2vec" if EMBEDDING_BACKEND == "model2vec" else "embeddings_voyage"
+)
+EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", _DEFAULT_EMB_NAME)
+EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 
+# Embedding & Reranking API Configuration (defaults: Jina AI)
+RERANK_API_KEY = os.getenv("RERANK_API_KEY", "") or os.getenv("JINA_API_KEY", "")
+RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "") or os.getenv(
+    "JINA_BASE_URL", "https://api.jina.ai"
+)
+RERANK_EMBEDDING_MODEL = os.getenv(
+    "RERANK_EMBEDDING_MODEL", "jina-embeddings-v5-text-small"
+)
+RERANK_EMBEDDING_DIM = 1024
+RERANK_RERANKER_MODEL = os.getenv(
+    "RERANK_RERANKER_MODEL", "jina-reranker-v2-base-multilingual"
+)
 
 # Asymmetric search prefixes.
-# Defaults match Jina v3/v5 local-inference convention ("Query: " / "Document: ").
-# For Qwen3-Embedding, override via env:
-#   QUERY_PREFIX="Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
-#   PASSAGE_PREFIX="Instruct: Represent this word and its translations for retrieval\n"
 QUERY_PREFIX = os.getenv("QUERY_PREFIX", "Query: ")
 PASSAGE_PREFIX = os.getenv("PASSAGE_PREFIX", "Document: ")
 
