@@ -71,6 +71,32 @@ validate_prussian in the run · 1 runtime error.
 The subprocess tests for `--validate-only` require the FST/CG3
 artifacts to be built: `make -C ../prussian-fst all cg3-check`.
 
+## Eval Suite Setup
+
+The inspect-ai reconstruction eval (`feature/evals` branch) additionally requires:
+
+1. **CG3 Grammar binaries** (for `validate_prussian` tool):
+   ```bash
+   make -C ../prussian-fst cg3-sets   # Generate CG3 sets from valence.json
+   make -C ../prussian-fst cg3-check  # Compile .cg3 rules → .bin binaries
+   ```
+   Output: `../prussian-fst/fst/build/cg3/*.bin` (disambiguator, dependency, validator)
+
+2. **ConLLU silver standard** (for focus-token recovery metrics):
+   ```bash
+   make -C ../prussian-fst conllu
+   ```
+   Output: `../prussian-fst/data/prussian_silver.conllu` (parsed gold corpus)
+
+3. **Corpus data** (already in `../prussian-corpus` as part of sibling checkouts)
+
+Then run the eval:
+```bash
+source .venv/bin/activate
+inspect eval evals/reconstruction.py --model openai/$OPENAI_MODEL
+inspect view  # browse results
+```
+
 ## Important rules
 
 ### 1. Bei Unsicherheit fragen statt raten
