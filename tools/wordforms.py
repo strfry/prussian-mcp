@@ -26,8 +26,8 @@ def wordforms_tool(
             human-readable names (``participle``, ``conjunctive``,
             ``optative``, ``imperative``, ``present``, ``preterite``,
             ``infinitive``) or raw FST tags (``Part+Pass``, ``Ind``,
-            ``Gen+Pl``).  Omit for the verb default (Ind+Pres) or
-            full list (non-verbs).
+            ``Gen+Pl``, ``Ind+Pres+P3``).  Omit for the verb default
+            (Ind+Pres) or full list (non-verbs).
 
     Returns:
         List of entries ``{lemma, desc, gender, forms,

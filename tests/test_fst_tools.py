@@ -180,7 +180,7 @@ class TestWordformsTool(unittest.TestCase):
         self.assertEqual(entry["lemma"], "berzi")
         self.assertIn("forms", entry)
         self.assertIn("available_features", entry)
-        self.assertIn("translations", entry)
+        self.assertNotIn("translations", entry)
         for form in entry["forms"]:
             self.assertIn("form", form)
             self.assertIn("tags", form)

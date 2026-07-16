@@ -109,7 +109,7 @@ def build_local_toolset(engine=None) -> list:
                 human-readable names (``participle``, ``conjunctive``,
                 ``optative``, ``present``, ``preterite``,
                 ``infinitive``, ``adverb``) or raw FST tags (``Part+Pass``,
-                ``Ind``, ``Gen+Pl``).
+                ``Gen+Pl``, ``Ind+Pres+P1``, ``Ind+Pres+P3``).
         """
         return wordforms_tool(engine, lemma, features=features)
 
