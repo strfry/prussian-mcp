@@ -30,9 +30,10 @@ def wordforms_tool(
             full list (non-verbs).
 
     Returns:
-        List of entries ``{lemma, translations, desc, gender, forms,
-        available_features}``.  On unknown feature, returns an error
-        dict with ``valid_features``.
+        List of entries ``{lemma, desc, gender, forms,
+        available_features}`` where ``available_features`` is the set of
+        FST tags occurring in the lemma's paradigm.  On unknown feature,
+        returns an error dict with ``valid_features``.
     """
     from prussian_engine.fst_tags import (
         fst_available,
@@ -49,6 +50,10 @@ def wordforms_tool(
     wanted_tags: list[str] | None = None
     if features:
         wanted_tags = resolve_features(features)
+        if wanted_tags is not None and "P3" in wanted_tags:
+            # Finite 3rd-person forms carry no number tag (ast = is/are),
+            # so a P3 request must not also require Sg/Pl.
+            wanted_tags = [t for t in wanted_tags if t not in ("Sg", "Pl")]
         if wanted_tags is None:
             valid = sorted(set(
                 list(_FEATURE_NAME_MAP.keys()) +
@@ -67,7 +72,6 @@ def wordforms_tool(
     results: list[dict[str, Any]] = []
 
     for entry in entries:
-        translations = entry.get("translations", {})
         fw = forms_with_tags(engine, entry) if fst_available() else []
 
         # Detect POS from tag inventory
@@ -77,15 +81,14 @@ def wordforms_tool(
             for tags in all_tag_strs
         )
 
-        # Collect all unique tags present across all forms
-        present_tags: set[str] = set()
+        # The set of individual tags occurring in the paradigm, in
+        # canonical order — any combination of them is a `features` filter.
+        present: set[str] = set()
         for f in fw:
             for t in f.get("tags", []):
-                for part in t.split("+"):
-                    present_tags.add(part.lower())
-
-        # Build available_features from present tags
-        available = _available_features(present_tags)
+                present.update(t.split("+"))
+        available = [t for t in _TAG_ORDER if t in present]
+        available += sorted(present - set(_TAG_ORDER))
 
         # Filter forms
         if wanted_tags is not None:
@@ -127,15 +130,34 @@ def wordforms_tool(
 
         entry_out: dict[str, Any] = {
             "lemma": entry.get("word", ""),
-            "translations": translations,
             "desc": entry.get("desc", ""),
             "gender": entry.get("gender", ""),
             "forms": forms_out,
             "available_features": available,
         }
+        if wanted_tags is not None and not forms_out:
+            entry_out["note"] = (
+                f"no forms match '{features}' — combine tags from "
+                "available_features"
+            )
         results.append(entry_out)
 
     return results
+
+
+# Canonical presentation order: POS, mood, tense, person, number, case,
+# gender, degree/misc.
+_TAG_ORDER = [
+    "N", "V", "Adj", "Adv", "Pron", "Num", "Part", "Prp", "Psp",
+    "Cnj", "SCnj", "Pcl", "IJ", "PropN",
+    "Ind", "Opt", "Subj", "Imp", "Rel", "Pres", "Pret", "Inf",
+    "Pass", "Refl",
+    "P1", "P2", "P3", "Sg", "Pl",
+    "Nom", "Gen", "Dat", "Akk",
+    "Masc", "Fem", "Neut",
+    "Cmp", "Sup", "Card", "Ord", "Encl",
+    "GovAkk", "GovDat", "GovGen",
+]
 
 
 _FEATURE_NAME_MAP = {
@@ -149,26 +171,6 @@ _FEATURE_NAME_MAP = {
     "infinitive": "Inf",
     "adverb": "Adv",
 }
-
-
-def _available_features(present_tags: set[str]) -> list[str]:
-    """Map present FST tag inventory to human-readable feature names."""
-    features = []
-    tag_checks = [
-        ("Ind", "indicative"), ("Pres", "present"), ("Pret", "preterite"),
-        ("Opt", "optative"), ("Subj", "subjunctive"), ("Imp", "imperative"),
-        ("Inf", "infinitive"), ("Part", "participle"),
-        ("Adv", "adverb"),
-        ("Pass", "passive"), ("Refl", "reflexive"),
-        ("Nom", "nominative"), ("Gen", "genitive"),
-        ("Dat", "dative"), ("Akk", "accusative"),
-        ("Sg", "singular"), ("Pl", "plural"),
-        ("Masc", "masculine"), ("Fem", "feminine"), ("Neut", "neuter"),
-    ]
-    for tag, name in tag_checks:
-        if tag.lower() in present_tags:
-            features.append(name)
-    return features
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -223,15 +225,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         for entry in results:
             lem = entry.get("lemma", "?")
-            trans = entry.get("translations", {})
-            trans_str = ", ".join(
-                f"{lang}: {t}" for lang, t in trans.items()
-            ) if isinstance(trans, dict) else str(trans)
             gender = entry.get("gender", "")
             desc = entry.get("desc", "")
             avail = entry.get("available_features", [])
 
-            header = f"{lem} — {trans_str}"
+            header = lem
             if gender:
                 header += f" [{gender}]"
             if desc:

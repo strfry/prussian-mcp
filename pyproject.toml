@@ -20,6 +20,9 @@ dependencies = [
 # Only needed for the `--mcp-url` remote-toolset path of `prussian-agent`.
 # The default in-process toolset does not require this.
 remote = []
+# model2vec.distill() — used to distill a custom-vocabulary static model.
+# torch comes from the PyTorch XPU wheel index (Intel Arc GPU on this host).
+distill = ["model2vec[distill]>=0.3.0", "torch>=2.10"]
 
 [project.scripts]
 agent = "agents.cli:main"
