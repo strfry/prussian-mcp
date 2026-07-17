@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from prussian_engine.rerank_search import RerankedSearchEngine, search_reranked
+from prussian.engine.embeddings.rerank import RerankedSearchEngine, search_reranked
 
 
 def test_sync_search():

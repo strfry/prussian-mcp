@@ -5,15 +5,19 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 ## Project Structure
 
 ```
-├── prussian_engine/       Python package (search, chat, tools)
-├── mcp_server.py          MCP server (stdio + web modes, REST API)
+├── prussian/              The one package
+│   ├── tools/             The four tools — single source of truth (+ CLI scripts)
+│   ├── engine/            Dictionary + FST/CG3 engine (search, morphology, embeddings, fst)
+│   ├── adapters/          Thin wrappers: mcp.py, inspect_tools.py, agent/ (CLI)
+│   └── config.py          Env-driven configuration
+├── evals/                 inspect-ai reconstruction eval harness
 ├── data/                  Dictionary data and wordlists
-├── embeddings/            Pre-computed E5 embeddings
+├── embeddings/            Pre-computed embeddings
 ├── prompts/               System prompts for LLM
 ├── scripts/               Data pipeline and development scripts
-├── tests/                 MCP server tests
+├── tests/                 Offline + engine tests
 ├── .mcp.json              MCP client configuration
-└── venv/                  Virtual environment
+└── .venv/                 Virtual environment
 ```
 
 ## Quick Start
@@ -55,7 +59,7 @@ cd prussian-mcp
 uv sync
 
 # 3. starten
-.venv/bin/python mcp_server.py        # stdio; --web für SSE/HTTP
+uv run prussian-mcp                   # stdio; --web für SSE/HTTP
 ```
 
 Liegt der prussian-fst-Checkout woanders: Pfad in `pyproject.toml`
@@ -80,12 +84,11 @@ For local LLM servers, you can use any OpenAI-compatible endpoint.
 
 **Option A: MCP Server - Local CLI (Claude Code/Desktop)**
 ```bash
-source venv/bin/activate
-python mcp_server.py
+uv run prussian-mcp                   # or: .venv/bin/python -m prussian.adapters.mcp
 ```
 - **Transport**: stdio (pure MCP protocol)
 - **No LLM needed** - just dictionary tools
-- 5 MCP tools available:
+- 4 MCP tools available:
   - `search_dictionary` - Semantic search
   - `lookup_prussian_word` - Word lookup
   - `get_word_forms` - Declensions/conjugations
@@ -95,13 +98,10 @@ python mcp_server.py
 
 **Option B: MCP Server - Web Mode (Combined MCP + OpenAI-compatible API)**
 ```bash
-source venv/bin/activate
-python mcp_server.py --web
+uv run prussian-mcp --web
 ```
-- **Modes**:
-  - **MCP Protocol** (SSE): http://localhost:8001/sse
-  - **OpenAI-compatible API**: POST http://localhost:8001/v1/chat/completions
-- **Requires LLM endpoint** configuration (see step 2)
+- **Transport**: streamable-http (MCP protocol for remote clients)
+- **Host/port**: `--host` / `--port` or `MCP_HOST` / `MCP_PORT` (default `127.0.0.1:8001`)
 - **Configure MCP in Claude Web**:
   ```json
   {
@@ -109,7 +109,7 @@ python mcp_server.py --web
     "url": "http://localhost:8001/sse"
   }
   ```
-- **Best for**: Everything - single server for MCP protocol, web UI, and REST API
+- **Best for**: Remote MCP clients over HTTP
 
 ## Development & Testing
 
@@ -123,57 +123,14 @@ python scripts/test_search.py
 python scripts/test_reranked_search.py
 ```
 
-## API
+## MCP Tools
 
-### REST Endpoints
+The four tools live in `prussian/tools/` and are wrapped 1:1 by every
+adapter (MCP, inspect-ai eval, CLI agent):
 
-**OpenAI-compatible Chat Completion API**
-
-**POST** `/v1/chat/completions` (streaming)
-
-Request:
-```json
-{
-  "model": "prussian-chat",
-  "messages": [
-    {"role": "user", "content": "Was bedeutet 'lauxnos'?"}
-  ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "search_dictionary",
-        "description": "Search Prussian dictionary",
-        "parameters": {...}
-      }
-    }
-  ],
-  "temperature": 0.7,
-  "max_tokens": 2000,
-  "stream": true,
-  "language": "de"
-}
-```
-
-Response (streaming SSE):
-```
-data: {"id": "chatcmpl-...", "object": "chat.completion.chunk", "choices": [{"delta": {"content": "Die"}}]}
-data: {"id": "chatcmpl-...", "object": "chat.completion.chunk", "choices": [{"delta": {"content": " Inschrift..."}}]}
-data: [DONE]
-```
-
-Features:
-- OpenAI-compatible format
-- Streaming and non-streaming modes (`stream: true/false`)
-- Tool calling support
-- Custom `language` parameter (`de` or `lt`)
-- Reasoning content support (DeepSeek R1)
-
-### MCP Tools
-
-- `search_dictionary(query, top_k)` - Semantic search (German/English → Prussian)
-- `lookup_prussian_word(word)` - Lookup Prussian word (Prussian → German/English)
-- `get_word_forms(lemma)` - Get declensions/conjugations
+- `search_dictionary(query, top_k, use_reranker, filter_tags)` - Semantic search (German/English/… → Prussian)
+- `lookup_prussian_word(text, fuzzy)` - Tokenize + FST-analyze a Prussian sentence, enrich from dictionary
+- `get_word_forms(lemma, features)` - Declensions/conjugations, optional feature filter
 - `validate_prussian(text, include_conllu)` - Grammar check with the FST/CG3
   pipeline from [`prussian-fst`](https://github.com/strfry/prussian-fst)
   (in-process). Returns three-valued JSON per sentence — `verified_in_coverage`
@@ -183,33 +140,22 @@ Features:
   (dependency analysis; MISC carries rule provenance `Rule=<name,…>` from
   named CG3 rules and `AgrParent=<id>` from the agreement `SETPARENT` layer).
   Requires a built prussian-fst checkout (`fst/build/base.fst`) plus
-  `vislcg3`/`hfst-flookup` on PATH; location via `PRUSSIAN_FST_DIR`
-  (default: sibling directory `../prussian-fst`).
-- `validate_prussian(text)` - Grammar validation via the ADD-only CG3
-  validator pass (`validator.cg3`, Divvun-style `&`-error tags). Returns a
-  **three-valued** verdict per sentence: `violations_found` (with rule id,
-  token, severity `error|warning`, message), `verified_in_coverage` (clean
-  AND trustworthy: no OOV, no reading collapse, low residual ambiguity, at
-  least one applicable check), or `out_of_coverage` (abstention, with
-  `coverage.reasons`). `out_of_coverage` must NOT be treated as "correct" —
-  only `verified_in_coverage` is a positive signal. Same prussian-fst
-  requirements as `fsg_check`.
+  `vislcg3`/`hfst-flookup` on PATH; the checkout is an editable uv
+  path-dependency (`[tool.uv.sources]`, default `../prussian-fst`).
 
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
-- **prussian_engine**: Modular Python package with search, chat, and tools
-- **mcp_server.py**: FastMCP server with stdio and web transports
-  - MCP Protocol (SSE for remote clients)
-  - OpenAI-compatible REST API (`/v1/chat/completions`)
-- **E5 Embeddings**: Semantic search using multilingual-e5-large (1024-dim)
-- **Tool Calling**: LLM uses tools to search dictionary and build responses
+- **`prussian.tools`**: the four tools — single source of truth wrapped by every adapter
+- **`prussian.engine`**: search, morphology, embeddings, and the FST/CG3 validator
+- **`prussian.adapters.mcp`**: FastMCP server (stdio / streamable-http) — the four tools + FST health, nothing else
+- **`prussian.adapters.agent`** / **`prussian.adapters.inspect_tools`**: the CLI agent and the inspect-ai eval
 
-**Two Runtime Modes:**
-1. **Local Mode** (`python mcp_server.py`): Pure MCP protocol via stdio for Claude Code/Desktop
-2. **Web Mode** (`python mcp_server.py --web`): All-in-one server with MCP (SSE) and OpenAI-compatible API (Web UI lives in the separate prussian-bot project)
+**Two MCP transports:**
+1. **stdio** (`uv run prussian-mcp`): pure MCP for Claude Code/Desktop
+2. **streamable-http** (`uv run prussian-mcp --web`): MCP for remote clients
 
 ## Documentation
 
@@ -227,10 +173,10 @@ python scripts/generate_embeddings.py
 
 ## Development
 
-The `prussian_engine` package is designed to be importable for CLI tools:
+The `prussian` package is designed to be importable for CLI tools:
 
 ```python
-from prussian_engine import load
+from prussian import load
 
 search_engine = load()
 results = search_engine.query("Haus", top_k=5)

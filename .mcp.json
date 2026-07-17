@@ -2,7 +2,7 @@
   "mcpServers": {
     "prussian-mcp": {
       "command": ".venv/bin/python",
-      "args": ["mcp_server.py"],
+      "args": ["-m", "prussian.adapters.mcp"],
       "cwd": "/home/strfry/projekte/prussian-mcp",
       "env": {
         "RERANK_BASE_URL": "http://localhost:8001/v3",

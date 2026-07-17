@@ -281,7 +281,7 @@ def forms_with_tags(engine: Any, entry: dict) -> list[dict]:
     Forms whose FST analysis does not match the entry lemma get
     ``"tags": []`` (PGR kept as fallback).
     """
-    from .pgr import extract_pgr_from_entry
+    from prussian.engine.morphology import extract_pgr_from_entry
 
     forms_pgr = extract_pgr_from_entry(entry)
     if not forms_pgr:

@@ -97,7 +97,7 @@ def _build_env_argparser() -> argparse.ArgumentParser:
 
 
 def _run_validate_only(args: argparse.Namespace) -> int:
-    from prussian_engine.fsg_check import run_validate  # lazy
+    from prussian.engine.fst.validate import run_validate  # lazy
     try:
         raw = run_validate(args.sentence, include_conllu=args.include_conllu)
     except Exception as e:

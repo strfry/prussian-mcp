@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from prussian_engine import SearchEngine
-from prussian_engine.config import (
+from prussian import SearchEngine
+from prussian.config import (
     API_BASE_URL,
     API_KEY,
     EMBEDDING_MODEL,
@@ -62,7 +62,7 @@ BASE_URL = (API_BASE_URL or "(unset)").rstrip("/")
 
 def test_embedding_connectivity():
     """Ping the embedding endpoint with a minimal request."""
-    from prussian_engine.embedding_client import EmbeddingClient
+    from prussian.engine.embeddings.client import EmbeddingClient
 
     t0 = time.time()
     client = EmbeddingClient()
@@ -75,7 +75,7 @@ def test_embedding_connectivity():
 
 def test_reranker_connectivity():
     """Ping the reranker endpoint with a minimal request."""
-    from prussian_engine.embedding_client import EmbeddingClient
+    from prussian.engine.embeddings.client import EmbeddingClient
 
     async def _run():
         client = EmbeddingClient()
@@ -322,7 +322,7 @@ def main():
     print(f"\n{BOLD}── Reranked Search (vs pure embedding){'' if reranker_available and embedding_ok else ' [SKIPPED]'} ──{RESET}")
 
     if reranker_available and embedding_ok:
-        from prussian_engine.rerank_search import RerankedSearchEngine
+        from prussian.engine.embeddings.rerank import RerankedSearchEngine
 
         rs_engine = RerankedSearchEngine(use_reranker=True)
 

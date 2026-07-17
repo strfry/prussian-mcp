@@ -35,7 +35,7 @@ def wordforms_tool(
         FST tags occurring in the lemma's paradigm.  On unknown feature,
         returns an error dict with ``valid_features``.
     """
-    from prussian_engine.fst_tags import (
+    from prussian.engine.fst.tags import (
         fst_available,
         resolve_features,
         match_tags,
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         engine = SearchEngine()
     except Exception as e:
         print(f"error loading engine: {type(e).__name__}: {e}",

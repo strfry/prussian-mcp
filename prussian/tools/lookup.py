@@ -24,12 +24,12 @@ def lookup_tool(
         text: Prussian text (one or more sentences).
         fuzzy: set ``True`` for Levenshtein fallback on OOV tokens.
     """
-    from prussian_engine.fst_tags import analyze_words, fst_available
-    from prussian_engine.fsg_check import fst_api
+    from prussian.engine.fst.tags import analyze_words, fst_available
+    from prussian.engine.fst.validate import fst_api
 
     # 1. Tokenize, discard punctuation
     if fst_available():
-        from prussian_engine.fst_tags import tokenize
+        from prussian.engine.fst.tags import tokenize
         all_tokens = tokenize(text)
     else:
         import re
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         engine = SearchEngine()
     except Exception as e:
         print(f"error loading engine: {type(e).__name__}: {e}",

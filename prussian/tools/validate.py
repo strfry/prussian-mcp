@@ -26,7 +26,7 @@ def validate_tool(text: str, include_conllu: bool = False) -> str:
         violations, coverage, conllu?}, ...],
         "spelling_corrections": [...]}``
     """
-    from prussian_engine.fsg_check import validate_with_corrections
+    from prussian.engine.fst.validate import validate_with_corrections
 
     return validate_with_corrections(text, include_conllu=include_conllu)
 

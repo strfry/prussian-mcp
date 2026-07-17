@@ -23,20 +23,23 @@ remote = []
 # model2vec.distill() — used to distill a custom-vocabulary static model.
 # torch comes from the PyTorch XPU wheel index (Intel Arc GPU on this host).
 distill = ["model2vec[distill]>=0.3.0", "torch>=2.10"]
+# inspect-ai reconstruction eval (evals/ + prussian.adapters.inspect_tools).
+eval = ["inspect-ai"]
 
 [project.scripts]
-agent = "agents.cli:main"
-validate = "tools.validate:main"
-search = "tools.search:main"
-lookup = "tools.lookup:main"
-wordforms = "tools.wordforms:main"
+prussian-agent = "prussian.adapters.agent.cli:main"
+prussian-mcp = "prussian.adapters.mcp:main"
+validate = "prussian.tools.validate:main"
+search = "prussian.tools.search:main"
+lookup = "prussian.tools.lookup:main"
+wordforms = "prussian.tools.wordforms:main"
 
 [build-system]
 requires = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agents", "prussian_engine", "tools"]
+packages = ["prussian"]
 
 # prussian-fst wird editierbar aus dem Geschwister-Checkout eingebunden
 # (In-Process-Import der FST/CG3-Pipeline statt Subprozess).  Liegt der

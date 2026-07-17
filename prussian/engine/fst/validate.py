@@ -113,7 +113,7 @@ def _get_engine():
     """Lazy-loaded SearchEngine Singleton."""
     global _engine
     if _engine is None:
-        from .search import SearchEngine
+        from prussian.engine.search import SearchEngine
         _engine = SearchEngine()
     return _engine
 

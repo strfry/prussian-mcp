@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from prussian_engine.config import (
+from prussian.config import (
     EMBEDDING_BACKEND,
     EMBEDDING_MODEL,
     API_BASE_URL,
@@ -18,7 +18,7 @@ from prussian_engine.config import (
     EMBEDDINGS_PATH,
     PASSAGE_PREFIX,
 )
-from prussian_engine.embedder import get_embedder
+from prussian.engine.embeddings.backend import get_embedder
 
 BATCH_SIZE = 256
 

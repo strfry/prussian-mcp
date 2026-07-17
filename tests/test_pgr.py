@@ -1,7 +1,7 @@
-"""Tests for prussian_engine/pgr.py - Prussian Glossing Rules."""
+"""Tests for prussian/pgr.py - Prussian Glossing Rules."""
 
 import unittest
-from prussian_engine.pgr import (
+from prussian.engine.morphology import (
     parse_pgr,
     build_pgr,
     match_pgr,

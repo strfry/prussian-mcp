@@ -2,7 +2,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from prussian_engine.pgr import extract_pgr_from_entry
+from prussian.engine.morphology import extract_pgr_from_entry
 
 
 class TestSearchPGRIntegration(unittest.TestCase):
@@ -10,7 +10,7 @@ class TestSearchPGRIntegration(unittest.TestCase):
 
     def test_form_to_pgr_lookup(self):
         """Test that form_to_pgr index is built correctly."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -95,7 +95,7 @@ class TestGetWordFormsFilter(unittest.TestCase):
             },
         }
 
-        from prussian_engine.pgr import match_pgr
+        from prussian.engine.morphology import match_pgr
 
         forms_pgr = extract_pgr_from_entry(entry)
         filtered = [(f, p) for f, p in forms_pgr if match_pgr(p, "GEN.PL")]
@@ -110,7 +110,7 @@ class TestSimplifyPGR(unittest.TestCase):
 
     def test_no_change_single_pgr(self):
         """Single PGR should remain unchanged."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -119,7 +119,7 @@ class TestSimplifyPGR(unittest.TestCase):
 
     def test_no_change_no_common(self):
         """PGRs with no common features shouldn't change."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -128,7 +128,7 @@ class TestSimplifyPGR(unittest.TestCase):
 
     def test_simplify_common_features(self):
         """GEN.PL.MASC|GEN.PL.FEM|GEN.PL.NEUT → GEN.PL"""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -141,7 +141,7 @@ class TestExtractReferenceTarget(unittest.TestCase):
 
     def test_valid_reference(self):
         """Extract target from valid reference."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -150,7 +150,7 @@ class TestExtractReferenceTarget(unittest.TestCase):
 
     def test_no_reference(self):
         """Return None for non-reference."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -163,7 +163,7 @@ class TestResolveReference(unittest.TestCase):
 
     def test_resolve_existing_lemma(self):
         """Resolve reference to existing lemma."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()
@@ -199,7 +199,7 @@ class TestResolveReference(unittest.TestCase):
 
     def test_resolve_missing_lemma(self):
         """Return empty list for non-existent lemma."""
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
 
         with patch.object(SearchEngine, "__init__", lambda self: None):
             engine = SearchEngine()

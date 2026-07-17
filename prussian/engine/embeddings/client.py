@@ -4,7 +4,7 @@ import httpx
 import numpy as np
 from typing import List, Dict, Any
 
-from .config import (
+from prussian.config import (
     API_KEY,
     API_BASE_URL,
     EMBEDDING_MODEL,

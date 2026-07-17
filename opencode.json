@@ -4,7 +4,7 @@
   "mcp": {
     "prussian-mcp": {
       "type": "local",
-      "command": ["uv", "run", "mcp_server.py"],
+      "command": ["uv", "run", "prussian-mcp"],
       "enabled": true,
       "timeout": 30000
     },

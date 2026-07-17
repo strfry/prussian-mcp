@@ -6,7 +6,7 @@ The pure-logic tests (match_tags, resolve_features) always run.
 
 import unittest
 
-from prussian_engine.fst_tags import (
+from prussian.engine.fst.tags import (
     match_tags,
     resolve_features,
     fst_available,
@@ -156,14 +156,14 @@ class TestWordformsTool(unittest.TestCase):
         return engine
 
     def test_not_found(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "nonexistent")
         self.assertIsInstance(result, dict)
         self.assertIn("error", result)
 
     def test_unknown_feature(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "berzi", features="foobar")
         self.assertIsInstance(result, dict)
@@ -171,7 +171,7 @@ class TestWordformsTool(unittest.TestCase):
         self.assertIn("valid_features", result)
 
     def test_output_format(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "berzi")
         self.assertIsInstance(result, list)
@@ -191,12 +191,12 @@ class TestWordformsFST(unittest.TestCase):
     """FST-dependent wordforms tests."""
 
     def _make_engine(self):
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         engine = SearchEngine()
         return engine
 
     def test_verb_default_ind_pres(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "wīdātun")
         self.assertIsInstance(result, list)
@@ -213,7 +213,7 @@ class TestWordformsFST(unittest.TestCase):
                                 f"Expected Ind+Pres, got {tags}")
 
     def test_participle_feature(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "wīdātun", features="participle")
         self.assertIsInstance(result, list)
@@ -226,7 +226,7 @@ class TestWordformsFST(unittest.TestCase):
                                 f"Expected Part, got {tags}")
 
     def test_noun_full_list(self):
-        from tools.wordforms import wordforms_tool
+        from prussian.tools.wordforms import wordforms_tool
         engine = self._make_engine()
         result = wordforms_tool(engine, "berzi")
         self.assertIsInstance(result, list)
@@ -240,11 +240,11 @@ class TestLookupFST(unittest.TestCase):
     """FST-dependent lookup tests."""
 
     def _make_engine(self):
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         return SearchEngine()
 
     def test_sentence_lookup(self):
-        from tools.lookup import lookup_tool
+        from prussian.tools.lookup import lookup_tool
         engine = self._make_engine()
         results = lookup_tool(engine, "As wīda gaīlan berzin.")
         self.assertIsInstance(results, list)
@@ -255,7 +255,7 @@ class TestLookupFST(unittest.TestCase):
             self.assertIn("method", r)
 
     def test_fst_method_analyses(self):
-        from tools.lookup import lookup_tool
+        from prussian.tools.lookup import lookup_tool
         engine = self._make_engine()
         results = lookup_tool(engine, "As")
         self.assertTrue(len(results) > 0)
@@ -267,7 +267,7 @@ class TestLookupFST(unittest.TestCase):
             self.assertIn("tags", a)
 
     def test_oov_fallback(self):
-        from tools.lookup import lookup_tool
+        from prussian.tools.lookup import lookup_tool
         engine = self._make_engine()
         results = lookup_tool(engine, "Ein Xyzzymorg")
         # Xyzzymorg should trigger dictionary_fallback
@@ -275,7 +275,7 @@ class TestLookupFST(unittest.TestCase):
         self.assertTrue(len(fallback) > 0)
 
     def test_adjustment_field(self):
-        from tools.lookup import lookup_tool
+        from prussian.tools.lookup import lookup_tool
         engine = self._make_engine()
         # Titlecase: "dēiwan" is lowercase, FST knows "Dēiwan"
         results = lookup_tool(engine, "dēiwan")
@@ -292,11 +292,11 @@ class TestSearchFST(unittest.TestCase):
     """FST-dependent search tests."""
 
     def _make_engine(self):
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         return SearchEngine()
 
     def test_search_with_filter_tags(self):
-        from tools.search import search_tool
+        from prussian.tools.search import search_tool
         engine = self._make_engine()
         results = search_tool(engine, "Birke", top_k=5,
                               use_reranker=False, filter_tags="Akk+Sg")
@@ -312,7 +312,7 @@ class TestSearchFST(unittest.TestCase):
                     )
 
     def test_search_without_filter(self):
-        from tools.search import search_tool
+        from prussian.tools.search import search_tool
         engine = self._make_engine()
         results = search_tool(engine, "Birke", top_k=3,
                               use_reranker=False)
@@ -342,7 +342,7 @@ class TestValidateBattery(unittest.TestCase):
 
     def test_three_valued_statuses(self):
         import json
-        from prussian_engine.fsg_check import run_validate
+        from prussian.engine.fst.validate import run_validate
         for text, expected in self.CASES:
             with self.subTest(text=text):
                 result = json.loads(run_validate(text))
@@ -351,7 +351,7 @@ class TestValidateBattery(unittest.TestCase):
 
     def test_unlicensed_case_reason(self):
         import json
-        from prussian_engine.fsg_check import run_validate
+        from prussian.engine.fst.validate import run_validate
         result = json.loads(run_validate(
             "As asma stan autōmatikin rekōnstruiwuns be sen grammatikin "
             "perbāndan plattinuns."))

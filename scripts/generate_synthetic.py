@@ -32,7 +32,7 @@ def get_search_engine():
     global _search_engine
     if _search_engine is None:
         try:
-            from prussian_engine.search import SearchEngine
+            from prussian.engine.search import SearchEngine
 
             _search_engine = SearchEngine()
         except Exception as e:

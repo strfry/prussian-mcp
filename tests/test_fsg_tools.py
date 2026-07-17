@@ -1,4 +1,4 @@
-"""Tests for prussian_engine/fsg_check.py — in-process grammar tool.
+"""Tests for prussian/fsg_check.py — in-process grammar tool.
 
 Skips when the prussian-fst artifacts are not built (check_artifacts
 non-empty) — the input-validation tests run regardless.
@@ -7,7 +7,7 @@ non-empty) — the input-validation tests run regardless.
 import json
 import unittest
 
-from prussian_engine.fsg_check import (MAX_TEXT_LEN, check_fsg_pipeline,
+from prussian.engine.fst.validate import (MAX_TEXT_LEN, check_fsg_pipeline,
                                        fst_api, run_validate)
 
 ARTIFACTS_MISSING = fst_api is None or bool(fst_api.check_artifacts())

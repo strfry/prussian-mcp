@@ -6,40 +6,51 @@ RAG-System für ein Altpreußisch-Wörterbuch:
 
 - Semantische Suche via Embeddings
 - Tool-gestützte Übersetzung via LLM-Agent (smolagents)
-- FastMCP als Webserver mit MCP-Tools, -Prompts und -Resources
+- FastMCP-Server, der dieselben vier Tools über das MCP-Protokoll exponiert
+
+Alles liegt in **einem** Paket, `prussian/`.  Die vier Tool-Funktionen in
+`prussian/tools/` sind die *Single Source of Truth*; jeder Adapter (MCP,
+inspect-ai, CLI) ist ein dünner 1:1-Wrapper darum.
 
 ```
-User → prussian-agent CLI → smolagents ToolCallingAgent → LLM
-                              ↕ (4 Tools)                  ↓
-                        prussian_engine              PRUSSIAN: <Satz>
-                        (SearchEngine + FST/CG3)
-
-MCP-Clients → FastMCP Server → prussian_engine
-              (4 Tools + Prompts + Resources)
+                       ┌─────────────────────────────┐
+                       │  prussian/tools/  (4 Tools)  │  ← Single Source of Truth
+                       │  search · lookup · wordforms │
+                       │  · validate                  │
+                       └──────────────┬──────────────┘
+        ┌─────────────────────────────┼─────────────────────────────┐
+        ▼                             ▼                             ▼
+ adapters/agent (CLI)          adapters/mcp                 adapters/inspect_tools
+ smolagents Agent → LLM        FastMCP (stdio/http)         inspect-ai @tools
+ → PRUSSIAN: <Satz>            MCP-Clients                  evals/reconstruction.py
+        └─────────────────────────────┴─────────────────────────────┘
+                                       ▼
+                          prussian/engine  (SearchEngine + FST/CG3)
 ```
 
 ## Verzeichnisstruktur
 
 ```
 prussian-mcp/
-├── agents/                  # prussian-agent CLI + Runner
-│   ├── cli.py               # argparse entry point
-│   ├── runner.py            # run_agent, RunResult, extract_candidate
-│   └── tools.py             # in-process smolagents Tools (Single Source of Truth)
-├── prussian_engine/         # Python-Paket (importierbar für CLI)
-│   ├── __init__.py          # Hauptexport
-│   ├── search.py            # Embedding-basierte Suche + get_word_forms
-│   ├── fsg_check.py         # FST/CG3 Grammar Pipeline
-│   └── config.py            # Env-Konfiguration
-├── tools/                   # Shared CLI entry points (validate, search, lookup, wordforms)
-├── mcp_server.py            # FastMCP-Server (stdio / streamable-http)
-├── prompts/
-│   ├── agent_system_en.md   # Kanonischer Agent-Prompt
-│   ├── plan_prompt.txt      # MCP plan-Prompt
-│   ├── final_prompt.txt     # MCP final-Prompt
-│   ├── syntax_rules.txt     # MCP Resource: Syntaxregeln
-│   └── base_vocab.md        # MCP Resource: Basisvokabular
-├── pyproject.toml           # uv-Projekt; prussian-fst als editierbare Path-Dependency
+├── prussian/                     # das eine Paket
+│   ├── __init__.py               # re-export: SearchEngine, load(), Version
+│   ├── config.py                 # Env-Konfiguration (Import-Zeit)
+│   ├── tools/                    # DIE vier Tools + CLI entry points
+│   │   ├── __init__.py           # search_tool, lookup_tool, wordforms_tool, validate_tool
+│   │   ├── search.py  lookup.py  wordforms.py  validate.py
+│   ├── engine/                   # Wörterbuch- + FST/CG3-Engine
+│   │   ├── search.py             # SearchEngine (Embedding-Suche, Lookup, Formen)
+│   │   ├── morphology.py         # PGR (Prussian Glossing Rules)
+│   │   ├── embeddings/           # backend.py (model2vec/API), client.py, rerank.py
+│   │   └── fst/                  # tags.py (FST-Analyse), validate.py (CG3-Pipeline)
+│   └── adapters/                 # dünne Framework-Wrapper
+│       ├── mcp.py                # FastMCP (stdio / streamable-http) — 4 Tools + Health
+│       ├── inspect_tools.py      # inspect-ai @tool-Wrapper
+│       └── agent/                # prussian-agent CLI (cli.py, runner.py, tools.py)
+├── evals/                        # inspect-ai Eval-Harness (reconstruction.py, corpus_dataset.py)
+├── prompts/                      # agent_system_en.md, syntax_rules.txt, base_vocab.md
+├── tests/
+├── pyproject.toml                # uv-Projekt; prussian-fst als editierbare Path-Dependency
 └── ARCHITECTURE.md
 ```
 
@@ -56,51 +67,41 @@ prussian-mcp/
 
 ## Komponenten
 
-### 1. prussian_engine
+### 1. prussian.tools — die vier Tools (Single Source of Truth)
 
-Das Herzstück – unabhängig vom Webserver importierbar für CLI-Tools.
+`search_tool`, `lookup_tool`, `wordforms_tool`, `validate_tool`.  Reine
+Funktionen über einer `SearchEngine`; alle Adapter rufen genau diese auf.
+Zusätzlich exponiert als CLI-Scripts `validate` / `search` / `lookup` /
+`wordforms`.
 
-- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy
-- `fsg_check.py`: FST/CG3 Grammar Pipeline
-- `config.py`: Liest Env-Variablen (`OPENAI_*`, `EMBEDDING_*`, `RERANK_*`)
+### 2. prussian.engine — Wörterbuch- + FST/CG3-Engine
 
-### 2. agents (prussian-agent CLI)
+- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy, Lookup, `get_word_forms`
+- `morphology.py`: PGR-Parsing und Feature-Utilities
+- `embeddings/`: `backend.py` (model2vec lokal / API), `client.py` (HTTP), `rerank.py` (`RerankedSearchEngine`)
+- `fst/tags.py`: FST-Morphologieanalyse, Tag-Matching, Formengenerierung
+- `fst/validate.py`: dreiwertige CG3-Grammatikprüfung — `run_validate`, `validate_with_corrections`, `check_fsg_pipeline`
+- `config.py`: liest Env-Variablen (`OPENAI_*`, `EMBEDDING_*`, `RERANK_*`)
 
-- `cli.py`: argparse entry point, `--validate-only`, `--mcp-url`, `--json`
-- `runner.py`: `run_agent()` – smolagents ToolCallingAgent, `extract_candidate()`, `parse_last_validation()`
-- `tools.py`: 4 in-process smolagents Tools (Single Source of Truth für Docstrings)
+### 3. prussian.adapters — dünne Wrapper
 
-### 3. mcp_server.py (FastMCP)
+- **`mcp.py`** (FastMCP): exponiert die vier Tools über stdio / streamable-http, plus FST-Health-Check beim Start. Kein LLM-Proxy, keine Prompts/Resources mehr. Entry point `prussian-mcp`.
+- **`agent/`** (prussian-agent CLI): `cli.py` (argparse, `--validate-only`, `--mcp-url`, `--json`), `runner.py` (`run_agent`, `RunResult`, `extract_candidate`, `parse_last_validation`), `tools.py` (smolagents-Wrapper).
+- **`inspect_tools.py`**: inspect-ai `@tool`-Wrapper für die Reconstruction-Eval in `evals/`.
 
-MCP-Tools (4):
+Die vier MCP-Tools:
 - `search_dictionary` – Semantische Suche
 - `lookup_prussian_word` – Tokenize + FST-Analyse
 - `get_word_forms` – Deklination/Konjugation
 - `validate_prussian` – FST/CG3 Grammatik-Check
-
-MCP-Prompts:
-- `plan` – Planungs-Prompt
-- `final` – Antwortformulierung
-
-MCP-Resources:
-- `grammar://syntax` – Kondensierte Syntaxregeln
-- `vocabulary://base` – Basisvokabular (Pronomen, Präpositionen,高频 Verben)
-
-Streaming LLM Proxy:
-- `/api/completions` (SSE)
-- `/v1/chat/completions` (OpenAI-kompatibel)
-
-### 4. Tools (shared CLI entry points)
-
-`tools/` – Direkte CLI-Aufrufe ohne Agent:
-- `validate`, `search`, `lookup`, `wordforms`
 
 ## Tech-Stack
 
 | Komponente   | Technologie              |
 |--------------|--------------------------|
 | Agent        | smolagents               |
-| Web Server   | FastMCP                  |
-| Embeddings   | numpy                    |
+| MCP Server   | FastMCP                  |
+| Embeddings   | numpy / model2vec        |
 | LLM Client   | openai (compat)          |
 | Grammar      | prussian-fst (FST/CG3)   |
+| Eval         | inspect-ai               |

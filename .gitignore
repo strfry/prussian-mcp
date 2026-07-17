@@ -8,8 +8,8 @@ corpus/synthetic/
 data/cache/
 data/*.json
 
-# Embeddings
-embeddings/
+# Embeddings (top-level data dir only — not the prussian/engine/embeddings package)
+/embeddings/
 
 # Environment
 .env

@@ -23,7 +23,7 @@ from typing import Any
 from smolagents.memory import ActionStep, ToolCall
 from smolagents.monitoring import Timing
 
-from agents.runner import (
+from prussian.adapters.agent.runner import (
     build_model,
     extract_candidate,
     parse_last_validation,
@@ -208,7 +208,7 @@ class TestRunAgent:
                 return "PRUSSIAN: As wīda galan berzin"
         agent = _Agent(_Mem())
 
-        from agents.runner import run_agent as _run_agent
+        from prussian.adapters.agent.runner import run_agent as _run_agent
         result = _run_agent(
             "Ich sehe eine weiße Birke",
             agent=agent,

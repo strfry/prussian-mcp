@@ -65,7 +65,7 @@ def search_tool(
     # Pre-compute forms_with_tags for all results if filter_tags is set
     forms_cache: dict[str, list[dict]] = {}
     if filter_tags:
-        from prussian_engine.fst_tags import forms_with_tags, fst_available
+        from prussian.engine.fst.tags import forms_with_tags, fst_available
         if fst_available():
             for r in results:
                 entries = engine.word_to_entry.get(r["word"].lower(), [])
@@ -82,7 +82,7 @@ def search_tool(
             "translations": r["translations"],
         }
         if filter_tags:
-            from prussian_engine.fst_tags import match_tags
+            from prussian.engine.fst.tags import match_tags
             fw = forms_cache.get(r["word"].lower(), [])
             if fw:
                 filtered = [f for f in fw
@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        from prussian_engine.search import SearchEngine
+        from prussian.engine.search import SearchEngine
         engine = SearchEngine()
     except Exception as e:
         print(f"error loading engine: {type(e).__name__}: {e}",
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     reranked_engine = None
     if not args.no_reranker:
         try:
-            from prussian_engine.rerank_search import RerankedSearchEngine
+            from prussian.engine.embeddings.rerank import RerankedSearchEngine
             reranked_engine = RerankedSearchEngine(use_reranker=True)
         except ValueError:
             print("warning: API_KEY not set — skipping reranker",

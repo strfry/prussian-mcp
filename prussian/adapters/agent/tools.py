@@ -2,7 +2,7 @@
 
 The four tools — ``search_dictionary``, ``lookup_prussian_word``,
 ``get_word_forms``, ``validate_prussian`` — have names and signatures
-identical to the FastMCP server in ``mcp_server.py`` so that the system
+identical to the FastMCP server in ``prussian.adapters.mcp`` so that the system
 prompt's tool descriptions stay interchangeable between the in-process
 agent path and the remote-MCP path.
 
@@ -10,7 +10,7 @@ agent path and the remote-MCP path.
 ``build_local_toolset``.  This keeps ``prussian-mcp`` importable from
 ``prussian-llm``'s editable install without forcing ``prussian-fst`` to
 be present, and it lets users ``source env.hf-voyage.sh`` *before*
-launching the CLI so that ``prussian_engine.config`` picks up the right
+launching the CLI so that ``prussian.config`` picks up the right
 embedding / LLM env vars at import time.
 """
 
@@ -37,12 +37,12 @@ def build_local_toolset(engine=None) -> list:
         List of four smolagents ``Tool`` objects.
     """
     # Lazy import — see module docstring.
-    from prussian_engine.search import SearchEngine
+    from prussian.engine.search import SearchEngine
 
     if engine is None:
         engine = SearchEngine()
 
-    from tools import search_tool, lookup_tool, wordforms_tool, validate_tool
+    from prussian.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
     @tool
     def search_dictionary(

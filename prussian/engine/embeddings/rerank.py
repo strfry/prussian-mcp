@@ -5,9 +5,9 @@ import re
 import sys
 from typing import Dict, Any, List
 
-from .search import SearchEngine
-from .embedding_client import EmbeddingClient
-from .config import API_KEY
+from prussian.engine.search import SearchEngine
+from prussian.engine.embeddings.client import EmbeddingClient
+from prussian.config import API_KEY
 
 
 def get_word_type(entry: dict) -> str:

@@ -6,14 +6,14 @@ import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from .config import (
+from prussian.config import (
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
     RERANKER_MODEL,
 )
 
-from .embedder import get_embedder
-from .pgr import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
+from prussian.engine.embeddings.backend import get_embedder
+from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
 class SearchEngine:

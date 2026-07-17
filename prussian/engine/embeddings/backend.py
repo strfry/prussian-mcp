@@ -6,7 +6,7 @@ Two backends are supported:
   the default and makes the search self-contained so it can run in the cloud
   without a separate embedding server.
 - ``api``        – remote OpenAI-/Jina-compatible embedding endpoint via
-  :class:`~prussian_engine.embedding_client.EmbeddingClient` (legacy behaviour).
+  :class:`~prussian.engine.embeddings.client.EmbeddingClient` (legacy behaviour).
 
 Both backends expose the same tiny interface used by the search engine and the
 embedding generation script::
@@ -21,7 +21,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from .config import (
+from prussian.config import (
     EMBEDDING_BACKEND,
     EMBEDDING_MODEL,
     API_KEY,
@@ -76,7 +76,7 @@ class ApiEmbedder:
     """Remote embedding backend wrapping :class:`EmbeddingClient`."""
 
     def __init__(self):
-        from .embedding_client import EmbeddingClient
+        from prussian.engine.embeddings.client import EmbeddingClient
 
         if not API_KEY:
             raise ValueError(
