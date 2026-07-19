@@ -6,7 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 
 DATA_DIR = PROJECT_ROOT / "data"
-EMBEDDINGS_DIR = PROJECT_ROOT / "embeddings"
+EMBEDDINGS_DIR = PROJECT_ROOT.parent / "embeddings" / "data"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 DICTIONARY_PATH = DATA_DIR / "twanksta_entries.json"
@@ -15,17 +15,16 @@ AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 # ── Embedding backend ────────────────────────────────────────────────────────
 # "model2vec" -> local, CPU-only static embeddings (default, no API needed)
 # "api"       -> remote OpenAI-/Jina-compatible embedding endpoint
-EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "model2vec").lower()
+EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "fastembed").lower()
 
 # Model name — works for both backends:
 #   model2vec: HuggingFace id or local dir from StaticModel.save_pretrained()
 #   api:       remote model id (e.g. "jina-embeddings-v5-text-small")
-EMBEDDING_MODEL = os.getenv(
-    "EMBEDDING_MODEL",
-    "minishlab/potion-multilingual-128M"
-    if EMBEDDING_BACKEND == "model2vec"
-    else "jina-embeddings-v5-text-small",
-)
+_DEFAULT_MODEL = {
+    "model2vec": "minishlab/potion-multilingual-128M",
+    "api": "jina-embeddings-v5-text-small",
+}.get(EMBEDDING_BACKEND, "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", _DEFAULT_MODEL)
 
 # Embedding dimension — only used by the API backend (model2vec reads it from
 # the loaded model at runtime).
@@ -38,9 +37,10 @@ RERANKER_MODEL = os.getenv(
 
 # Precomputed corpus embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*".
 # They must be generated with the same backend/model used for query encoding.
-_DEFAULT_EMB_NAME = (
-    "embeddings_model2vec" if EMBEDDING_BACKEND == "model2vec" else "embeddings_voyage"
-)
+_DEFAULT_EMB_NAME = {
+    "model2vec": "embeddings_model2vec",
+    "api": "embeddings_voyage",
+}.get(EMBEDDING_BACKEND, "embeddings_fastembed")
 EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", _DEFAULT_EMB_NAME)
 EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 

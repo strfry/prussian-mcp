@@ -9,6 +9,7 @@ dependencies = [
     "model2vec>=0.3.0",
     "numpy==2.0.2",
     "openai>=2.45.0",
+    "prussian-embeddings[local,model2vec]",
     "prussian-fst",
     "pyhfst>=1.4.0",
     "smolagents>=1.26",
@@ -46,4 +47,5 @@ packages = ["prussian"]
 # Checkout woanders, diesen Pfad anpassen und `uv sync` erneut ausführen.
 # Voraussetzung: dort gebaute Artefakte (make -C <checkout>/fst all cg3-check).
 [tool.uv.sources]
-prussian-fst = { path = "../prussian-fst", editable = true }
+prussian-embeddings = { path = "../embeddings", editable = true }
+prussian-fst = { path = "../fst", editable = true }

@@ -97,11 +97,15 @@ class ApiEmbedder:
 
 def get_embedder(backend: Optional[str] = None):
     """Return an embedder for the configured (or requested) backend."""
-    backend = (backend or EMBEDDING_BACKEND or "model2vec").lower()
+    backend = (backend or EMBEDDING_BACKEND or "fastembed").lower()
+    if backend == "fastembed":
+        from prussian_embeddings import FastEmbedEmbedder
+        model = EMBEDDING_MODEL if EMBEDDING_MODEL != "minishlab/potion-multilingual-128M" else None
+        return FastEmbedEmbedder(model_name=model or "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     if backend == "model2vec":
         return Model2VecEmbedder()
     if backend == "api":
         return ApiEmbedder()
     raise ValueError(
-        f"Unknown EMBEDDING_BACKEND: {backend!r} (expected 'model2vec' or 'api')"
+        f"Unknown EMBEDDING_BACKEND: {backend!r} (expected 'fastembed', 'model2vec', or 'api')"
     )
