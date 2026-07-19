@@ -1,6 +1,5 @@
 """Search engine for Prussian Dictionary using embeddings."""
 
-import json
 import sys
 import numpy as np
 from pathlib import Path
@@ -9,10 +8,9 @@ from typing import List, Dict, Any, Optional
 from prussian.config import (
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
-    RERANKER_MODEL,
 )
 
-from prussian.engine.embeddings.backend import get_embedder
+from prussian_embeddings import get_embedder, EmbeddingStore
 from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -49,42 +47,20 @@ class SearchEngine:
 
     def __init__(self):
         """Initialize search engine by loading dictionary and embeddings."""
-        self.entries: List[Dict[str, Any]] = []
-        self.embeddings: Optional[np.ndarray] = None
         self.word_to_entry: Dict[str, List[Dict[str, Any]]] = {}
         self.form_to_lemma: Dict[str, List[str]] = {}
         self.form_to_pgr: Dict[str, List[str]] = {}
 
+        print("Loading embedding model...", file=sys.stderr)
         self.embedder = get_embedder()
 
-        self.reranker_available = False  # Reranking handled separately
-
-        print("Loading dictionary...", file=sys.stderr)
-        self._load_dictionary()
         print("Loading embeddings...", file=sys.stderr)
-        self._load_embeddings()
+        self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
+        self.entries = self.store.records
+
         print("Building indices...", file=sys.stderr)
         self._build_indices()
 
-    def _load_dictionary(self):
-        """Load dictionary entries that match the embeddings."""
-        # Load from embeddings directory - these entries match the embedding order!
-        entries_file = Path(f"{EMBEDDINGS_PATH}.entries.json")
-        if not entries_file.exists():
-            raise FileNotFoundError(f"Entries file not found: {entries_file}")
-
-        with open(entries_file, "r", encoding="utf-8") as f:
-            self.entries = json.load(f)
-        print(f"Loaded {len(self.entries)} dictionary entries")
-
-    def _load_embeddings(self):
-        """Load precomputed embeddings from .npy file."""
-        emb_file = Path(f"{EMBEDDINGS_PATH}.embeddings.npy")
-        if not emb_file.exists():
-            raise FileNotFoundError(f"Embeddings not found: {emb_file}")
-
-        self.embeddings = np.load(emb_file)
-        print(f"Loaded embeddings: {self.embeddings.shape}")
 
     def _build_indices(self):
         """Build lookup indices for words and forms."""
@@ -235,67 +211,6 @@ class SearchEngine:
                         return results
         return []
 
-    def _get_query_embedding(self, query_text: str) -> np.ndarray:
-        """Encode query using the configured embedder."""
-        try:
-            embedding = self.embedder.get_embedding(query_text)
-            return embedding
-        except Exception as e:
-            raise RuntimeError(f"Query embedding failed: {e}")
-
-    def _rerank_candidates(
-        self, query: str, candidates: List[Dict[str, Any]], top_k: int = 5
-    ) -> List[Dict[str, Any]]:
-        """Rerank candidates using cross-encoder model."""
-        if not candidates or not self.reranker_available:
-            return candidates
-
-        # Prepare query-document pairs
-        documents = []
-        for entry in candidates:
-            word = entry.get("word", "")
-            de = entry.get("de", "")
-            en = entry.get("en", "")
-            doc_text = f"{word} {de} {en}".strip()
-            documents.append(doc_text)
-
-        try:
-            import requests
-
-            base_url = OPENAI_BASE_URL.rstrip("/")
-            response = requests.post(
-                f"{base_url}/v3/embeddings/rerank",
-                json={"model": RERANKER_MODEL, "query": query, "documents": documents},
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                # Reorder based on reranker scores
-                results = [None] * len(candidates)
-                for item in data.get("results", data.get("data", [])):
-                    index = item.get("index", 0)
-                    if index < len(candidates):
-                        results[index] = candidates[index]
-                return [r for r in results if r is not None][:top_k]
-        except Exception as e:
-            print(f"Reranker error: {e}")
-
-        return candidates[:top_k]
-
-    def _cosine_similarity(self, vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-        """Compute cosine similarity between vector and matrix."""
-        # Normalize query vector
-        vec_norm = np.linalg.norm(vec)
-        if vec_norm > 1e-10:
-            vec = vec / vec_norm
-
-        # Normalize matrix rows
-        matrix_norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-        matrix_norms = np.clip(matrix_norms, a_min=1e-10, a_max=None)
-        matrix = matrix / matrix_norms
-
-        # Dot product = cosine for normalized vectors
-        return np.dot(matrix, vec)
 
     def query(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
@@ -308,41 +223,24 @@ class SearchEngine:
         Returns:
             List of entries with translations (lemmas only)
         """
-        if self.embeddings is None:
+        if self.store is None:
             return []
 
-        # Add query prefix
-        query_text = f"{QUERY_PREFIX}{query}"
         print(f"Searching: \"{query}\"", file=sys.stderr)
 
-        # Encode query via local embedding server
-        query_embedding = self._get_query_embedding(query_text)
-
-        # Compute cosine similarities
-        similarities = self._cosine_similarity(query_embedding, self.embeddings)
-
-        # Get top-k indices
-        top_indices = np.argsort(similarities)[::-1][: top_k * 2]  # Get more to filter
+        # Query embeddings (over-fetch for filtering)
+        hits = self.store.query(self.embedder, query, k=top_k * 2, query_prefix=QUERY_PREFIX)
 
         # Filter for entries with translations and format results
         results = []
-        for idx in top_indices:
-            if idx >= len(self.entries):
-                continue
-
-            entry = self.entries[idx]
-            translations = entry.get("translations", {})
-
-            # Only return lemmas with translations (not inflected forms)
+        for record, score in hits:
+            translations = record.get("translations", {})
             if translations:
-                results.append(
-                    {
-                        "word": entry.get("word", ""),
-                        "translations": translations,
-                        "score": float(similarities[idx]),
-                    }
-                )
-
+                results.append({
+                    "word": record.get("word", ""),
+                    "translations": translations,
+                    "score": float(score),
+                })
             if len(results) >= top_k:
                 break
 
@@ -518,20 +416,12 @@ class SearchEngine:
             candidates.sort(key=lambda x: (-x[0], x[1]))
             top_candidates = candidates[:10]
 
-            if self.reranker_available:
-                formatted = [
-                    self._format_lookup_result(e, matched_form=word_lower)
-                    for _, _, _, e in top_candidates
-                ]
-                reranked = self._rerank_candidates(word_lower, formatted, top_k=5)
-                results.extend(reranked)
-            else:
-                for score, dist, lemma, entry in top_candidates[:5]:
-                    result = self._format_lookup_result(
-                        entry, matched_form=word_lower
-                    )
-                    if result not in results:
-                        results.append(result)
+            for score, dist, lemma, entry in top_candidates[:5]:
+                result = self._format_lookup_result(
+                    entry, matched_form=word_lower
+                )
+                if result not in results:
+                    results.append(result)
 
         results = self._follow_references(results)
         return results

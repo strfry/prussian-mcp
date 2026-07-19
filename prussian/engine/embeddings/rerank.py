@@ -6,7 +6,7 @@ import sys
 from typing import Dict, Any, List
 
 from prussian.engine.search import SearchEngine
-from prussian.engine.embeddings.client import EmbeddingClient
+from prussian_embeddings import EmbeddingClient
 from prussian.config import API_KEY
 
 
