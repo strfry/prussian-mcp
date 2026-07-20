@@ -46,7 +46,7 @@ def search_dictionary():
         query: str,
         top_k: int = 10,
         use_reranker: bool = False,
-        filter_tags: str | None = None,
+        filter_tags: str = "",
     ) -> str:
         """Use this tool to find the Prussian word for a concept — the
         FIRST step for every content word of the sentence you translate.
@@ -65,7 +65,7 @@ def search_dictionary():
             use_reranker: accepted for signature parity with the MCP
                 server; currently ignored (no reranker in-process).
             filter_tags: FST tag filter, e.g. "Akk+Sg", "Part+Pass",
-                "Opt", or None for no filter.  When set, each entry's
+                "Opt"; leave empty for no filter.  When set, each entry's
                 forms are filtered to those matching the tags.
 
         Returns:
@@ -78,7 +78,7 @@ def search_dictionary():
                 query,
                 top_k=top_k,
                 use_reranker=use_reranker,
-                filter_tags=filter_tags,
+                filter_tags=filter_tags or None,
             )
         )
         return _dumps(result)
@@ -114,7 +114,7 @@ def lookup_prussian_word():
 
 @tool
 def get_word_forms():
-    async def execute(lemma: str, features: str | None = None) -> str:
+    async def execute(lemma: str, features: str = "") -> str:
         """Use this tool to inflect a Prussian lemma into the exact form
         you need (case, number, gender, person, tense).  Never guess an
         inflected form — always fetch it here.
@@ -129,7 +129,7 @@ def get_word_forms():
 
         Args:
             lemma: Prussian base form (from `lookup_prussian_word`).
-            features: comma-separated feature filter, or None for the
+            features: comma-separated feature filter; leave empty for the
                 default view.  Accepts human-readable names (participle,
                 conjunctive, optative, present, preterite, infinitive,
                 adverb) or raw FST tags (Part+Pass, Gen+Pl, Ind+Pres+P1,
@@ -137,7 +137,7 @@ def get_word_forms():
         """
         engine = _get_engine()
         result = await anyio.to_thread.run_sync(
-            lambda: wordforms_tool(engine, lemma, features=features)
+            lambda: wordforms_tool(engine, lemma, features=features or None)
         )
         return _dumps(result)
 
