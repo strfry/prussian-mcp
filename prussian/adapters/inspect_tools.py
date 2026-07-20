@@ -19,6 +19,7 @@ from typing import Any
 import anyio
 
 from inspect_ai.tool import tool
+from inspect_ai.util import store
 
 from prussian.tools import lookup_tool, search_tool, validate_tool, wordforms_tool
 
@@ -38,6 +39,27 @@ def _get_engine():
 
 def _dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
+
+
+def _repeated(tool_name: str, **args: Any) -> bool:
+    """True when this exact call was already made within the sample.
+
+    Transcript analysis showed agent models looping on identical calls
+    (44% of all calls in a command-r run).  The ``store()`` is sample-
+    scoped, so no state leaks between samples.
+    """
+    key = f"seen:{tool_name}:{json.dumps(args, sort_keys=True)}"
+    if store().get(key):
+        return True
+    store().set(key, True)
+    return False
+
+
+_REPEAT_MSG = (
+    "You already made this exact call — reuse its earlier result. "
+    "If it did not contain what you need, change the arguments or "
+    "move on; repeating it returns nothing new."
+)
 
 
 @tool
@@ -71,6 +93,8 @@ def search_dictionary():
         Returns:
             List of entries {word, translations, forms?, gender?}.
         """
+        if _repeated("search_dictionary", query=query, top_k=top_k, filter_tags=filter_tags):
+            return _dumps({"repeated_call": _REPEAT_MSG})
         engine = _get_engine()
         result = await anyio.to_thread.run_sync(
             lambda: search_tool(
@@ -103,6 +127,8 @@ def lookup_prussian_word():
             fuzzy: set True for Levenshtein fallback on OOV tokens;
                 False for exact matching.
         """
+        if _repeated("lookup_prussian_word", text=text, fuzzy=bool(fuzzy)):
+            return _dumps({"repeated_call": _REPEAT_MSG})
         engine = _get_engine()
         result = await anyio.to_thread.run_sync(
             lambda: lookup_tool(engine, text, fuzzy=bool(fuzzy))
@@ -135,6 +161,8 @@ def get_word_forms():
                 adverb) or raw FST tags (Part+Pass, Gen+Pl, Ind+Pres+P1,
                 Ind+Pres+P3).
         """
+        if _repeated("get_word_forms", lemma=lemma, features=features):
+            return _dumps({"repeated_call": _REPEAT_MSG})
         engine = _get_engine()
         result = await anyio.to_thread.run_sync(
             lambda: wordforms_tool(engine, lemma, features=features or None)
@@ -175,6 +203,8 @@ def validate_prussian():
         - `violations_found`: each violation names the rule, offending
           form, message, and severity (error vs. warning).
         """
+        if _repeated("validate_prussian", text=text, include_conllu=bool(include_conllu)):
+            return _dumps({"repeated_call": _REPEAT_MSG})
         result = await anyio.to_thread.run_sync(
             lambda: validate_tool(text, include_conllu=bool(include_conllu))
         )

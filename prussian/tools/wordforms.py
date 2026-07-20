@@ -135,7 +135,12 @@ def wordforms_tool(
             "forms": forms_out,
             "available_features": available,
         }
-        if wanted_tags is not None and not forms_out:
+        if not forms_out and not available:
+            entry_out["note"] = (
+                "indeclinable — no inflected forms exist; use the lemma "
+                "unchanged"
+            )
+        elif wanted_tags is not None and not forms_out:
             entry_out["note"] = (
                 f"no forms match '{features}' — combine tags from "
                 "available_features"
