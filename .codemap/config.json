@@ -1,0 +1,21 @@
+{
+  "only": [
+    "py",
+    "jinja2",
+    "toml",
+    "md",
+    "sh"
+  ],
+  "exclude": [
+    ".venv",
+    "__pycache__",
+    "*.egg-info",
+    ".git"
+  ],
+  "depth": 5,
+  "budgets": {},
+  "routing": {
+    "retrieval": {}
+  },
+  "drift": {}
+}
