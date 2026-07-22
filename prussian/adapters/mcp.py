@@ -19,7 +19,6 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from prussian.engine.embeddings.rerank import RerankedSearchEngine
 from prussian.engine.fst.validate import check_fsg_pipeline
 from prussian.engine.search import SearchEngine
 from prussian.tools import lookup_tool, search_tool, validate_tool, wordforms_tool
@@ -47,7 +46,7 @@ mcp = FastMCP(
 # The engine and reranker are loaded lazily so that importing this module
 # (e.g. for the console-script entry point) stays cheap and side-effect free.
 _search_engine: SearchEngine | None = None
-_reranked_engine: RerankedSearchEngine | None = None
+_reranker = None
 
 
 def _engine() -> SearchEngine:
@@ -57,6 +56,14 @@ def _engine() -> SearchEngine:
     return _search_engine
 
 
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from prussian.engine.embeddings.rerank import build_reranker
+        _reranker = build_reranker()
+    return _reranker
+
+
 # ── Tools (1:1 with prussian.tools) ──────────────────────────────────────────
 
 
@@ -64,8 +71,8 @@ def _engine() -> SearchEngine:
 def search_dictionary(
     query: str,
     top_k: int = 10,
-    use_reranker: bool = True,
     filter_tags: str | None = None,
+    context: str = "",
 ) -> list[dict[str, Any]]:
     """Semantic search in the Prussian dictionary.
 
@@ -78,29 +85,26 @@ def search_dictionary(
             Polish, Russian).  Never add "prussian"/"preußisch" --
             it's implicit.
         top_k: number of results to return.
-        use_reranker: rerank the candidates with the cross-encoder
-            (loaded lazily on first use).  Requires the reranker API
-            env vars; falls back to plain retrieval if unavailable.
         filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
             ``"Part+Pass"``, ``"Opt"``.  When set, each entry's
             forms are filtered to those matching the tags.
+        context: usage context for reranking (enables cross-encoder
+            when set).  In chunk mode each top chunk is annotated
+            with ``best_line`` / ``lines``; in entry mode results
+            are reranked by relevance.
 
     Returns:
-        List of entries ``{word, translations, forms?, gender?}``.
-        ``forms`` / ``gender`` are added only when ``filter_tags``
-        matches forms for that entry.
+        List of entries ``{word, translations, forms?, gender?}``
+        (entry mode) or ``{lemma, members, pos, score, text, entries,
+        best_line?, lines?}`` (chunk mode).
     """
-    global _reranked_engine
-    if use_reranker and _reranked_engine is None:
-        _reranked_engine = RerankedSearchEngine(use_reranker=True)
-
     return search_tool(
         _engine(),
         query,
         top_k=top_k,
-        use_reranker=use_reranker,
         filter_tags=filter_tags,
-        reranked_engine=_reranked_engine if use_reranker else None,
+        reranker=_get_reranker() if context else None,
+        context=context or None,
     )
 
 

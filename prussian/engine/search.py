@@ -8,9 +8,11 @@ from typing import List, Dict, Any, Optional
 from prussian.config import (
     EMBEDDINGS_PATH,
     QUERY_PREFIX,
+    CHUNK_EMBEDDINGS_PATH,
+    HYBRID_SEARCH,
 )
 
-from prussian_embeddings import get_embedder, EmbeddingStore
+from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index, hybrid_query
 from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -54,9 +56,25 @@ class SearchEngine:
         print("Loading embedding model...", file=sys.stderr)
         self.embedder = get_embedder()
 
-        print("Loading embeddings...", file=sys.stderr)
-        self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
-        self.entries = self.store.records
+        self.chunk_mode = CHUNK_EMBEDDINGS_PATH is not None
+
+        if self.chunk_mode:
+            import json as _json
+            print(f"Loading chunk embeddings ({CHUNK_EMBEDDINGS_PATH.name})...",
+                  file=sys.stderr)
+            self.store = EmbeddingStore.load(str(CHUNK_EMBEDDINGS_PATH))
+            # Load entry records for indices from entry-level store
+            entry_store_path = f"{EMBEDDINGS_PATH}.entries.json"
+            with open(entry_store_path, "r", encoding="utf-8") as f:
+                self.entries = _json.load(f)
+            # Build BM25 index over chunk texts when hybrid search enabled
+            self.bm25 = (BM25Index([r["text"] for r in self.store.records])
+                         if HYBRID_SEARCH else None)
+        else:
+            print("Loading embeddings...", file=sys.stderr)
+            self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
+            self.entries = self.store.records
+            self.bm25 = None
 
         print("Building indices...", file=sys.stderr)
         self._build_indices()
@@ -226,6 +244,9 @@ class SearchEngine:
         if self.store is None:
             return []
 
+        if self.chunk_mode:
+            return self._query_chunks(query, top_k)
+
         print(f"Searching: \"{query}\"", file=sys.stderr)
 
         # Query embeddings (over-fetch for filtering)
@@ -244,6 +265,33 @@ class SearchEngine:
             if len(results) >= top_k:
                 break
 
+        return results
+
+    def _query_chunks(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """Query in chunk mode: BM25+dense RRF or dense-only."""
+        if self.bm25 is not None:
+            hits = hybrid_query(self.store, self.embedder, self.bm25, query,
+                                k=top_k, query_prefix=QUERY_PREFIX)
+        else:
+            hits = self.store.query(self.embedder, query,
+                                    k=top_k, query_prefix=QUERY_PREFIX)
+
+        results = []
+        for record, score in hits:
+            members = record.get("members", [])
+            entries = [
+                {"word": e["word"], "translations": e.get("translations", {})}
+                for m in members
+                for e in self.word_to_entry.get(m.lower(), [])
+            ]
+            results.append({
+                "lemma": record.get("lemma", ""),
+                "members": members,
+                "pos": record.get("pos", ""),
+                "score": float(score),
+                "text": record["text"],
+                "entries": entries,
+            })
         return results
 
     def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:

@@ -25,6 +25,7 @@ from prussian.tools import lookup_tool, search_tool, validate_tool, wordforms_to
 # Lazily built once — SearchEngine reads embedding/LLM env at construction
 # time, so it must be created *after* the env file is sourced.
 _engine = None
+_reranker = None
 
 
 def _get_engine():
@@ -36,6 +37,14 @@ def _get_engine():
     return _engine
 
 
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from prussian.engine.embeddings.rerank import build_reranker
+        _reranker = build_reranker()
+    return _reranker
+
+
 def _dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
@@ -45,8 +54,8 @@ def search_dictionary():
     async def execute(
         query: str,
         top_k: int = 10,
-        use_reranker: bool = False,
         filter_tags: str = "",
+        context: str = "",
     ) -> str:
         """Use this tool to find the Prussian word for a concept — the
         FIRST step for every content word of the sentence you translate.
@@ -62,11 +71,13 @@ def search_dictionary():
                 languages in one query (e.g. "Birke birch") sharpens the
                 match.  Never add "prussian"/"preußisch" — it's implicit.
             top_k: number of results to return (default 10).
-            use_reranker: accepted for signature parity with the MCP
-                server; currently ignored (no reranker in-process).
             filter_tags: FST tag filter, e.g. "Akk+Sg", "Part+Pass",
                 "Opt"; leave empty for no filter.  When set, each entry's
                 forms are filtered to those matching the tags.
+            context: usage context for reranking; when set, the
+                cross-encoder is loaded lazily and results are
+                reranked by relevance.  In chunk mode each top chunk
+                is annotated with best_line / lines.
 
         Returns:
             List of entries {word, translations, forms?, gender?}.
@@ -77,8 +88,9 @@ def search_dictionary():
                 engine,
                 query,
                 top_k=top_k,
-                use_reranker=use_reranker,
                 filter_tags=filter_tags or None,
+                reranker=_get_reranker() if context else None,
+                context=context or None,
             )
         )
         return _dumps(result)

@@ -48,8 +48,8 @@ def build_local_toolset(engine=None) -> list:
     def search_dictionary(
         query: str,
         top_k: int = 10,
-        use_reranker: bool = True,
         filter_tags: str | None = None,
+        context: str | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search in the Prussian dictionary.
 
@@ -62,19 +62,23 @@ def build_local_toolset(engine=None) -> list:
                 Polish, Russian).  Never add "prussian"/"preußisch" —
                 it's implicit.
             top_k: number of results to return.
-            use_reranker: accepted for signature parity with the MCP
-                server; currently ignored (no reranker in-process).
             filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
                 ``"Part+Pass"``, ``"Opt"``.  When set, each entry's
                 forms are filtered to those matching the tags.
+            context: usage context for reranking; when set, the
+                cross-encoder is loaded lazily and results are
+                reranked by relevance.
 
         Returns:
             List of entries ``{word, translations, forms?, gender?}``.
             ``forms`` / ``gender`` are added only when ``filter_tags``
             matches forms for that entry.
         """
+        from prussian.engine.embeddings.rerank import build_reranker
+        reranker = build_reranker() if context else None
         return search_tool(engine, query, top_k=top_k,
-                           use_reranker=False, filter_tags=filter_tags)
+                           filter_tags=filter_tags,
+                           reranker=reranker, context=context)
 
     @tool
     def lookup_prussian_word(

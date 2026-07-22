@@ -39,6 +39,19 @@ EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 # Asymmetric query encoding prefix
 QUERY_PREFIX = os.getenv("QUERY_PREFIX", "Query: ")
 
+# ── Chunk mode ────────────────────────────────────────────────────────────────
+# Non-empty CHUNK_EMBEDDINGS_NAME enables chunk mode (one vector per
+# lemma-cluster instead of per headword).  QUERY_PREFIX must match the
+# chunk model's expected prefix (e.g. "query: " for e5-large).
+CHUNK_EMBEDDINGS_NAME = os.getenv("CHUNK_EMBEDDINGS_NAME", "")
+CHUNK_EMBEDDINGS_PATH = EMBEDDINGS_DIR / CHUNK_EMBEDDINGS_NAME if CHUNK_EMBEDDINGS_NAME else None
+
+# BM25 + dense RRF hybrid recall (set "0" to force dense-only for debugging).
+HYBRID_SEARCH = os.getenv("HYBRID_SEARCH", "1") not in ("0", "false", "no")
+
+# Max chunks sent to the cross-encoder for context reranking (per-line cost).
+CHUNK_RERANK_TOPN = int(os.getenv("CHUNK_RERANK_TOPN", "10"))
+
 # LLM Configuration (for chat/llm features)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v3")

@@ -299,7 +299,7 @@ class TestSearchFST(unittest.TestCase):
         from prussian.tools.search import search_tool
         engine = self._make_engine()
         results = search_tool(engine, "Birke", top_k=5,
-                              use_reranker=False, filter_tags="Akk+Sg")
+                              filter_tags="Akk+Sg")
         self.assertIsInstance(results, list)
         # Should find berzi with accusative singular forms
         for r in results:
@@ -314,8 +314,7 @@ class TestSearchFST(unittest.TestCase):
     def test_search_without_filter(self):
         from prussian.tools.search import search_tool
         engine = self._make_engine()
-        results = search_tool(engine, "Birke", top_k=3,
-                              use_reranker=False)
+        results = search_tool(engine, "Birke", top_k=3)
         self.assertTrue(len(results) > 0)
         # Without filter, no forms field
         for r in results:
