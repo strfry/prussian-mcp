@@ -8,6 +8,11 @@
       "enabled": true,
       "timeout": 30000
     },
+    "codemap": {
+      "type": "local",
+      "enabled": true,
+      "command": ["codemap", "mcp"]
+    },
     "playwright": {
       "type": "local",
       "command": ["docker", "run",
