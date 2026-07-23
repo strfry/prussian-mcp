@@ -33,7 +33,9 @@ API_BASE_URL = (
 
 # ── Embedding storage and search ──────────────────────────────────────────────
 # Precomputed corpus embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*".
-EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", "embeddings_fastembed")
+# Chunk mode is the default: EMBEDDINGS_NAME must point at a chunk store
+# (records with text+members), built via `make chunks`.
+EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", "embeddings_chunks_fastembed")
 EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 
 # Asymmetric query encoding prefix
