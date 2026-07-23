@@ -69,9 +69,9 @@ SEARCH = ToolSpec(
         "find the Prussian equivalent — the first step for every content word "
         "you translate.  Do NOT use for looking up known Prussian forms — use "
         "lookup_prussian_word instead.\n\n"
-        "Returns a list of entries {word, translations, forms?, gender?} "
-        "(entry mode) or {lemma, members, pos, score, text, entries, "
-        "best_line?, lines?} (chunk mode)."
+        "Returns a list of chunks {lemma, members, pos, score, text, entries} "
+        "(each chunk is a co-embedded lemma-cluster; with `context` set, the top "
+        "chunks also get best_line / lines)."
     ),
     args={
         "query": (
@@ -85,9 +85,8 @@ SEARCH = ToolSpec(
             "tags."
         ),
         "context": (
-            "usage context for reranking (enables the cross-encoder when set). "
-            "In chunk mode each top chunk is annotated with best_line / lines; "
-            "in entry mode results are reranked by relevance."
+            "usage context for reranking (enables the cross-encoder when set); "
+            "each top chunk is annotated with best_line / lines."
         ),
     },
 )

@@ -17,36 +17,73 @@ def search_tool(
 ) -> list[dict[str, Any]]:
     """Semantic search in the Prussian dictionary.
 
-    Use this when you have a concept or modern-language word and want to
-    find the Prussian equivalent.  Do NOT use for looking up known
-    Prussian forms — use ``lookup_tool`` instead.
+    Returns co-embedded lemma-cluster chunks; use it to find the Prussian
+    equivalent of a concept.  Do NOT use for known Prussian forms — use
+    ``lookup_tool`` instead.
 
     Args:
         engine: ``SearchEngine`` instance.
-        query: search query (German, English, Lithuanian, Latvian,
-            Polish, Russian).
-        top_k: number of results to return.
-        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
-            ``"Part+Pass"``, ``"Opt"``.  When set, each entry's forms
-            are filtered to those whose FST tags contain all wanted tags.
-        reranker: cross-encoder reranker object (from ``build_reranker()``).
-            When ``None`` or context is empty, reranking is skipped.
-        context: optional usage context that enables context-aware
-            reranking.  In chunk mode each top chunk is annotated with
-            ``best_line`` / ``lines``.  In entry mode the cross-encoder
-            reranks candidate entries.
+        query: search query (German, English, Lithuanian, Latvian, Polish,
+            Russian).
+        top_k: number of chunks to return.
+        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``.  When set,
+            each chunk gets a ``filtered_entries`` list (per-member forms
+            matching the tags).
+        reranker: cross-encoder reranker (from ``build_reranker()``).  Used
+            only when ``context`` is set.
+        context: optional usage context; each of the top ``CHUNK_RERANK_TOPN``
+            chunks is annotated with ``best_line`` / ``lines``.
 
     Returns:
-        List of entries.  Entry mode: ``{word, translations, forms?, gender?}``.
-        Chunk mode: ``{lemma, members, pos, score, text, entries,
+        List of chunks ``{lemma, members, pos, score, text, entries,
         best_line?, lines?, filtered_entries?}``.
     """
-    from prussian.engine.backends import backend_for
+    results = engine.query(query, top_k)
 
-    return backend_for(engine).run(
-        engine, query, top_k,
-        filter_tags=filter_tags, reranker=reranker, context=context,
-    )
+    if context and reranker:
+        from prussian_embeddings import annotate_chunk
+        from prussian.config import CHUNK_RERANK_TOPN
+        for i, chunk in enumerate(results[:CHUNK_RERANK_TOPN]):
+            results[i] = annotate_chunk(chunk, context, reranker)
+
+    if filter_tags:
+        from prussian.engine.fst.tags import forms_with_tags, match_tags, fst_available
+        if fst_available():
+            for chunk in results:
+                filtered_entries = []
+                for entry_dict in chunk.get("entries", []):
+                    word = entry_dict.get("word", "")
+                    fw_list = engine.word_to_entry.get(word.lower(), [])
+                    for fe in fw_list:
+                        fw = forms_with_tags(engine, fe)
+                        if fw:
+                            matched = [f for f in fw
+                                       if match_tags(f.get("tags", []), filter_tags)]
+                            if matched:
+                                filtered_entries.append({
+                                    **entry_dict,
+                                    "forms": [
+                                        {"form": f["form"],
+                                         "tags": ("+".join(f["tags"]) if f["tags"]
+                                                  else f.get("pgr", ""))}
+                                        for f in matched
+                                    ],
+                                    "gender": _infer_gender(engine, word),
+                                })
+                            break
+                chunk["filtered_entries"] = filtered_entries
+
+    return results
+
+
+def _infer_gender(engine, word: str) -> str:
+    """Get gender from the first matching dictionary entry."""
+    entries = engine.word_to_entry.get(word.lower(), [])
+    for e in entries:
+        g = e.get("gender", "")
+        if g:
+            return g
+    return ""
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -111,9 +148,43 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if not output:
             print("no results.")
-        from prussian.engine.backends import backend_for
-        backend = backend_for(engine)
         for i, e in enumerate(output, 1):
-            backend.render(i, e, context=args.context)
+            _print_chunk(i, e, context=args.context)
 
     return 0
+
+
+def _print_chunk(i: int, chunk: dict, *, context: str | None = None) -> None:
+    """Render a single chunk result."""
+    lemma = chunk.get("lemma", "")
+    pos = chunk.get("pos", "")
+    score = chunk.get("score", 0)
+    members = chunk.get("members", [])
+    header = f"  {i}. {lemma}"
+    if pos:
+        header += f" ({pos})"
+    header += f"  [{score:.3f}]"
+    if members:
+        header += f"  members: {', '.join(members)}"
+    print(header)
+    lines = chunk.get("lines")
+    if lines:
+        best = chunk.get("best_line", "")
+        for ln in sorted(lines, key=lambda x: x["rank"]):
+            marker = " →" if ln["text"] == best else ""
+            print(f"     [{ln['rank']}] {ln['text']}{marker}")
+    entries = chunk.get("entries", [])
+    if entries:
+        for ed in entries[:3]:
+            trans = ed.get("translations", {})
+            trans_str = ", ".join(
+                f"{lang}: {t}" for lang, t in trans.items()
+            ) if isinstance(trans, dict) else str(trans)
+            print(f"     entry: {ed['word']} — {trans_str}")
+    fe = chunk.get("filtered_entries", [])
+    if fe:
+        for fed in fe[:5]:
+            forms_str = "; ".join(
+                f"{f['tags']}: {f['form']}" for f in fed.get("forms", [])
+            )
+            print(f"     filtered: {fed['word']} — {forms_str}")

@@ -9,7 +9,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 EMBEDDINGS_DIR = PROJECT_ROOT.parent / "embeddings" / "data"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
-DICTIONARY_PATH = DATA_DIR / "twanksta_entries.json"
+DICTIONARY_PATH = Path(os.getenv("PRUSSIAN_DICTIONARY", str(DATA_DIR / "twanksta_entries.json")))
 AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
 # ── Embedding backend (deprecated pass-throughs) ──────────────────────────────
@@ -39,12 +39,9 @@ EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 # Asymmetric query encoding prefix
 QUERY_PREFIX = os.getenv("QUERY_PREFIX", "Query: ")
 
-# ── Chunk mode ────────────────────────────────────────────────────────────────
-# Non-empty CHUNK_EMBEDDINGS_NAME enables chunk mode (one vector per
-# lemma-cluster instead of per headword).  QUERY_PREFIX must match the
-# chunk model's expected prefix (e.g. "query: " for e5-large).
-CHUNK_EMBEDDINGS_NAME = os.getenv("CHUNK_EMBEDDINGS_NAME", "")
-CHUNK_EMBEDDINGS_PATH = EMBEDDINGS_DIR / CHUNK_EMBEDDINGS_NAME if CHUNK_EMBEDDINGS_NAME else None
+# ── Chunk retrieval ───────────────────────────────────────────────────────────
+# Chunk store: one vector per lemma-cluster instead of per headword.
+# QUERY_PREFIX must match the chunk model's expected prefix (e.g. "query: " for e5-large).
 
 # BM25 + dense RRF hybrid recall (set "0" to force dense-only for debugging).
 HYBRID_SEARCH = os.getenv("HYBRID_SEARCH", "1") not in ("0", "false", "no")

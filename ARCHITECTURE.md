@@ -81,8 +81,7 @@ Tool-Beschreibungen zeigen.
 
 ### 2. prussian.engine — Wörterbuch- + FST/CG3-Engine
 
-- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy, Lookup, `get_word_forms`; `query()` delegiert die Retrieval-Logik an ein Such-Backend
-- `backends.py`: Such-Backends `EntryBackend` / `ChunkBackend` (`backend_for`). Kapseln die modus-spezifische Retrieval-/Rerank-/`filter_tags`-/Render-Logik an *einer* Stelle, sodass `SearchEngine.query` und `search_tool` polymorph darüber dispatchen statt an mehreren Stellen auf `chunk_mode` zu verzweigen. „Chunk-Modus" = ein Embedding-Vektor pro Lemma-Cluster statt pro Stichwort.
+- `search.py`: `SearchEngine` – lädt den Chunk-Embedding-Store fürs Retrieval (BM25+dense RRF oder dense) und die Wort-/Formen-Indizes aus dem Wörterbuch (`DICTIONARY_PATH`); `query()` liefert Chunks `{lemma, members, pos, score, text, entries}`. Es gibt nur diesen einen Suchpfad (kein Entry-/Chunk-Umschalten mehr).
 - `morphology.py`: PGR-Parsing und Feature-Utilities
 - `embeddings/`: `backend.py` (model2vec lokal / API), `client.py` (HTTP), `rerank.py` (`RerankedSearchEngine`)
 - `fst/tags.py`: FST-Morphologieanalyse, Tag-Matching, Formengenerierung

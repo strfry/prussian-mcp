@@ -5,14 +5,9 @@ import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from prussian.config import (
-    EMBEDDINGS_PATH,
-    CHUNK_EMBEDDINGS_PATH,
-    HYBRID_SEARCH,
-)
+from prussian.config import EMBEDDINGS_PATH, QUERY_PREFIX, HYBRID_SEARCH, DICTIONARY_PATH
 
-from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index
-from prussian.engine.backends import backend_for
+from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index, hybrid_query
 from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -56,26 +51,29 @@ class SearchEngine:
         print("Loading embedding model...", file=sys.stderr)
         self.embedder = get_embedder()
 
-        self.chunk_mode = CHUNK_EMBEDDINGS_PATH is not None
-        self.backend = backend_for(self)
+        print(f"Loading embeddings ({EMBEDDINGS_PATH.name})...", file=sys.stderr)
+        self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
 
-        if self.chunk_mode:
-            import json as _json
-            print(f"Loading chunk embeddings ({CHUNK_EMBEDDINGS_PATH.name})...",
-                  file=sys.stderr)
-            self.store = EmbeddingStore.load(str(CHUNK_EMBEDDINGS_PATH))
-            # Load entry records for indices from entry-level store
-            entry_store_path = f"{EMBEDDINGS_PATH}.entries.json"
-            with open(entry_store_path, "r", encoding="utf-8") as f:
-                self.entries = _json.load(f)
-            # Build BM25 index over chunk texts when hybrid search enabled
-            self.bm25 = (BM25Index([r["text"] for r in self.store.records])
-                         if HYBRID_SEARCH else None)
-        else:
-            print("Loading embeddings...", file=sys.stderr)
-            self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
-            self.entries = self.store.records
-            self.bm25 = None
+        # The retrieval store must be a chunk store: records carry text + members.
+        recs = self.store.records
+        if recs and not ("text" in recs[0] and "members" in recs[0]):
+            raise ValueError(
+                f"EMBEDDINGS_NAME ({EMBEDDINGS_PATH.name}) is not a chunk store "
+                "(records lack 'text'/'members'). Build one with "
+                "`prussian-embeddings-build-chunks`."
+            )
+        self.bm25 = BM25Index([r["text"] for r in recs]) if HYBRID_SEARCH else None
+
+        # Word/form indices + translation enrichment come from the dictionary
+        # (the canonical source), not a second embedding store.
+        if not DICTIONARY_PATH.exists():
+            raise FileNotFoundError(
+                f"Dictionary not found at {DICTIONARY_PATH}. Run `make download` "
+                "or set PRUSSIAN_DICTIONARY."
+            )
+        import json as _json
+        with open(DICTIONARY_PATH, "r", encoding="utf-8") as f:
+            self.entries = _json.load(f)
 
         print("Building indices...", file=sys.stderr)
         self._build_indices()
@@ -233,22 +231,42 @@ class SearchEngine:
 
     def query(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
-        Semantic search for dictionary entries.
-
-        Delegates the raw, mode-specific retrieval to the search backend
-        (entry vs chunk); see :mod:`prussian.engine.backends`.
+        Semantic search over the chunk store (BM25+dense RRF or dense-only).
 
         Args:
             query: Search query (German/English text)
             top_k: Number of results to return
 
         Returns:
-            Entry mode: list of ``{word, translations, score}``.
-            Chunk mode: list of ``{lemma, members, pos, score, text, entries}``.
+            List of chunks ``{lemma, members, pos, score, text, entries}``.
         """
         if self.store is None:
             return []
-        return backend_for(self).query(self, query, top_k)
+
+        if self.bm25 is not None:
+            hits = hybrid_query(self.store, self.embedder, self.bm25, query,
+                                k=top_k, query_prefix=QUERY_PREFIX)
+        else:
+            hits = self.store.query(self.embedder, query,
+                                    k=top_k, query_prefix=QUERY_PREFIX)
+
+        results = []
+        for record, score in hits:
+            members = record.get("members", [])
+            entries = [
+                {"word": e["word"], "translations": e.get("translations", {})}
+                for m in members
+                for e in self.word_to_entry.get(m.lower(), [])
+            ]
+            results.append({
+                "lemma": record.get("lemma", ""),
+                "members": members,
+                "pos": record.get("pos", ""),
+                "score": float(score),
+                "text": record["text"],
+                "entries": entries,
+            })
+        return results
 
     def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:
         """
