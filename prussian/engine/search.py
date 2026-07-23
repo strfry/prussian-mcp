@@ -7,12 +7,12 @@ from typing import List, Dict, Any, Optional
 
 from prussian.config import (
     EMBEDDINGS_PATH,
-    QUERY_PREFIX,
     CHUNK_EMBEDDINGS_PATH,
     HYBRID_SEARCH,
 )
 
-from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index, hybrid_query
+from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index
+from prussian.engine.backends import backend_for
 from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -57,6 +57,7 @@ class SearchEngine:
         self.embedder = get_embedder()
 
         self.chunk_mode = CHUNK_EMBEDDINGS_PATH is not None
+        self.backend = backend_for(self)
 
         if self.chunk_mode:
             import json as _json
@@ -234,65 +235,20 @@ class SearchEngine:
         """
         Semantic search for dictionary entries.
 
+        Delegates the raw, mode-specific retrieval to the search backend
+        (entry vs chunk); see :mod:`prussian.engine.backends`.
+
         Args:
             query: Search query (German/English text)
             top_k: Number of results to return
 
         Returns:
-            List of entries with translations (lemmas only)
+            Entry mode: list of ``{word, translations, score}``.
+            Chunk mode: list of ``{lemma, members, pos, score, text, entries}``.
         """
         if self.store is None:
             return []
-
-        if self.chunk_mode:
-            return self._query_chunks(query, top_k)
-
-        print(f"Searching: \"{query}\"", file=sys.stderr)
-
-        # Query embeddings (over-fetch for filtering)
-        hits = self.store.query(self.embedder, query, k=top_k * 2, query_prefix=QUERY_PREFIX)
-
-        # Filter for entries with translations and format results
-        results = []
-        for record, score in hits:
-            translations = record.get("translations", {})
-            if translations:
-                results.append({
-                    "word": record.get("word", ""),
-                    "translations": translations,
-                    "score": float(score),
-                })
-            if len(results) >= top_k:
-                break
-
-        return results
-
-    def _query_chunks(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
-        """Query in chunk mode: BM25+dense RRF or dense-only."""
-        if self.bm25 is not None:
-            hits = hybrid_query(self.store, self.embedder, self.bm25, query,
-                                k=top_k, query_prefix=QUERY_PREFIX)
-        else:
-            hits = self.store.query(self.embedder, query,
-                                    k=top_k, query_prefix=QUERY_PREFIX)
-
-        results = []
-        for record, score in hits:
-            members = record.get("members", [])
-            entries = [
-                {"word": e["word"], "translations": e.get("translations", {})}
-                for m in members
-                for e in self.word_to_entry.get(m.lower(), [])
-            ]
-            results.append({
-                "lemma": record.get("lemma", ""),
-                "members": members,
-                "pos": record.get("pos", ""),
-                "score": float(score),
-                "text": record["text"],
-                "entries": entries,
-            })
-        return results
+        return backend_for(self).query(self, query, top_k)
 
     def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:
         """

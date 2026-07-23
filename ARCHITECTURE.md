@@ -72,11 +72,14 @@ prussian-mcp/
 `search_tool`, `lookup_tool`, `wordforms_tool`, `validate_tool`.  Reine
 Funktionen über einer `SearchEngine`; alle Adapter rufen genau diese auf.
 Zusätzlich exponiert als CLI-Scripts `validate` / `search` / `lookup` /
-`wordforms`.
+`wordforms`.  `runtime.py` hält die gemeinsamen Lazy-Singletons
+`get_engine()` / `get_reranker()`, die jeder Adapter teilt (statt je einer
+eigenen Kopie).
 
 ### 2. prussian.engine — Wörterbuch- + FST/CG3-Engine
 
-- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy, Lookup, `get_word_forms`
+- `search.py`: `SearchEngine` – lädt Embeddings, Kosinus-Ähnlichkeit via NumPy, Lookup, `get_word_forms`; `query()` delegiert die Retrieval-Logik an ein Such-Backend
+- `backends.py`: Such-Backends `EntryBackend` / `ChunkBackend` (`backend_for`). Kapseln die modus-spezifische Retrieval-/Rerank-/`filter_tags`-/Render-Logik an *einer* Stelle, sodass `SearchEngine.query` und `search_tool` polymorph darüber dispatchen statt an mehreren Stellen auf `chunk_mode` zu verzweigen. „Chunk-Modus" = ein Embedding-Vektor pro Lemma-Cluster statt pro Stichwort.
 - `morphology.py`: PGR-Parsing und Feature-Utilities
 - `embeddings/`: `backend.py` (model2vec lokal / API), `client.py` (HTTP), `rerank.py` (`RerankedSearchEngine`)
 - `fst/tags.py`: FST-Morphologieanalyse, Tag-Matching, Formengenerierung
@@ -85,9 +88,13 @@ Zusätzlich exponiert als CLI-Scripts `validate` / `search` / `lookup` /
 
 ### 3. prussian.adapters — dünne Wrapper
 
-- **`mcp.py`** (FastMCP): exponiert die vier Tools über stdio / streamable-http, plus FST-Health-Check beim Start. Kein LLM-Proxy, keine Prompts/Resources mehr. Entry point `prussian-mcp`.
-- **`agent/`** (prussian-agent CLI): `cli.py` (argparse, `--validate-only`, `--mcp-url`, `--json`), `runner.py` (`run_agent`, `RunResult`, `extract_candidate`, `parse_last_validation`), `tools.py` (smolagents-Wrapper).
-- **`inspect_tools.py`**: inspect-ai `@tool`-Wrapper für die Reconstruction-Eval in `evals/`.
+Alle Adapter teilen `SearchEngine` + Reranker über
+`prussian.tools.runtime` (ein Lazy-Singleton-Paar) und wrappen dieselben
+vier `prussian.tools`-Funktionen 1:1.
+
+- **`mcp.py`** (FastMCP): exponiert die vier Tools über stdio / streamable-http, plus FST-Health-Check beim Start. Kein LLM-Proxy, keine Prompts/Resources mehr. Entry point `prussian-mcp`. Die MCP-Tool-Docstrings sind die kanonische Beschreibung.
+- **`inspect_tools.py`**: inspect-ai `@tool`-Wrapper für die Reconstruction-Eval in `evals/`. Bewusst *instruktive* Docstrings ("Use this tool to …") wegen der minimalen Prompt-Fläche der Eval.
+- **`agent/`** (prussian-agent CLI, *legacy*): `cli.py` (argparse, `--validate-only`, `--mcp-url`, `--json`), `runner.py` (`run_agent`, `RunResult`, `extract_candidate`, `parse_last_validation`), `tools.py` (smolagents-Wrapper). smolagents ist deprecated — der Pfad bleibt lauffähig, ist aber kein Designtreiber mehr.
 
 Die vier MCP-Tools:
 - `search_dictionary` – Semantische Suche

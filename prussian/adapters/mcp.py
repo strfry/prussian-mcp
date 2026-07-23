@@ -20,8 +20,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from prussian.engine.fst.validate import check_fsg_pipeline
-from prussian.engine.search import SearchEngine
 from prussian.tools import lookup_tool, search_tool, validate_tool, wordforms_tool
+from prussian.tools.runtime import get_engine, get_reranker
 
 # ── Server ────────────────────────────────────────────────────────────────────
 
@@ -43,25 +43,9 @@ mcp = FastMCP(
     port=int(os.getenv("MCP_PORT", "8001")),
 )
 
-# The engine and reranker are loaded lazily so that importing this module
-# (e.g. for the console-script entry point) stays cheap and side-effect free.
-_search_engine: SearchEngine | None = None
-_reranker = None
-
-
-def _engine() -> SearchEngine:
-    global _search_engine
-    if _search_engine is None:
-        _search_engine = SearchEngine()
-    return _search_engine
-
-
-def _get_reranker():
-    global _reranker
-    if _reranker is None:
-        from prussian.engine.embeddings.rerank import build_reranker
-        _reranker = build_reranker()
-    return _reranker
+# The engine and reranker are the shared lazy singletons from
+# ``prussian.tools.runtime`` so importing this module stays cheap and
+# side-effect free (see the ``get_engine`` / ``get_reranker`` docstrings).
 
 
 # ── Tools (1:1 with prussian.tools) ──────────────────────────────────────────
@@ -99,11 +83,11 @@ def search_dictionary(
         best_line?, lines?}`` (chunk mode).
     """
     return search_tool(
-        _engine(),
+        get_engine(),
         query,
         top_k=top_k,
         filter_tags=filter_tags,
-        reranker=_get_reranker() if context else None,
+        reranker=get_reranker() if context else None,
         context=context or None,
     )
 
@@ -121,7 +105,7 @@ def lookup_prussian_word(text: str, fuzzy: bool = False) -> list[dict[str, Any]]
             sentences are the normal case.
         fuzzy: set True for Levenshtein fallback on OOV tokens.
     """
-    return lookup_tool(_engine(), text, fuzzy=fuzzy)
+    return lookup_tool(get_engine(), text, fuzzy=fuzzy)
 
 
 @mcp.tool()
@@ -139,9 +123,9 @@ def get_word_forms(lemma: str, features: str | None = None) -> list[dict[str, An
             human-readable names (``participle``, ``conjunctive``,
             ``optative``, ``present``, ``preterite``,
             ``infinitive``, ``adverb``) or raw FST tags (``Part+Pass``,
-            ``Ind``, ``Gen+Pl``).
+            ``Gen+Pl``, ``Ind+Pres+P1``, ``Ind+Pres+P3``).
     """
-    return wordforms_tool(_engine(), lemma, features=features)
+    return wordforms_tool(get_engine(), lemma, features=features)
 
 
 @mcp.tool()
@@ -206,7 +190,7 @@ def main() -> None:
         mcp.settings.port = args.port
 
     print("Loading Prussian Dictionary search engine...")
-    _engine()
+    get_engine()
     print("Search engine loaded successfully!")
 
     # Quick health check of the FST/CG3 grammar pipeline.

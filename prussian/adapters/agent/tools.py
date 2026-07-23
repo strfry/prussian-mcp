@@ -36,11 +36,11 @@ def build_local_toolset(engine=None) -> list:
     Returns:
         List of four smolagents ``Tool`` objects.
     """
-    # Lazy import — see module docstring.
-    from prussian.engine.search import SearchEngine
-
+    # Lazy import — see module docstring.  When no engine is injected, reuse
+    # the shared lazy singleton so all adapters share one SearchEngine.
     if engine is None:
-        engine = SearchEngine()
+        from prussian.tools.runtime import get_engine
+        engine = get_engine()
 
     from prussian.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
 
@@ -74,8 +74,8 @@ def build_local_toolset(engine=None) -> list:
             ``forms`` / ``gender`` are added only when ``filter_tags``
             matches forms for that entry.
         """
-        from prussian.engine.embeddings.rerank import build_reranker
-        reranker = build_reranker() if context else None
+        from prussian.tools.runtime import get_reranker
+        reranker = get_reranker() if context else None
         return search_tool(engine, query, top_k=top_k,
                            filter_tags=filter_tags,
                            reranker=reranker, context=context)

@@ -22,27 +22,11 @@ from inspect_ai.tool import tool
 
 from prussian.tools import lookup_tool, search_tool, validate_tool, wordforms_tool
 
-# Lazily built once — SearchEngine reads embedding/LLM env at construction
-# time, so it must be created *after* the env file is sourced.
-_engine = None
-_reranker = None
-
-
-def _get_engine():
-    global _engine
-    if _engine is None:
-        from prussian.engine.search import SearchEngine
-
-        _engine = SearchEngine()
-    return _engine
-
-
-def _get_reranker():
-    global _reranker
-    if _reranker is None:
-        from prussian.engine.embeddings.rerank import build_reranker
-        _reranker = build_reranker()
-    return _reranker
+# Shared lazy singletons — the engine reads embedding/LLM env at construction
+# time, so it is created *after* the env file is sourced.  All adapters share
+# one engine + reranker via ``prussian.tools.runtime``.
+from prussian.tools.runtime import get_engine as _get_engine
+from prussian.tools.runtime import get_reranker as _get_reranker
 
 
 def _dumps(obj: Any) -> str:
