@@ -2,9 +2,11 @@
 
 The four tools — ``search_dictionary``, ``lookup_prussian_word``,
 ``get_word_forms``, ``validate_prussian`` — have names and signatures
-identical to the FastMCP server in ``prussian.adapters.mcp`` so that the system
-prompt's tool descriptions stay interchangeable between the in-process
-agent path and the remote-MCP path.
+identical to the FastMCP server in ``prussian.adapters.mcp``, and their
+descriptions come from the shared ``prussian.tools.spec`` (the single source
+of truth), so the in-process agent path and the remote-MCP path present
+identical tool text.  smolagents is deprecated; this path is kept working but
+is no longer a design driver.
 
 ``SearchEngine`` and ``run_validate`` are imported **lazily** inside
 ``build_local_toolset``.  This keeps ``prussian-mcp`` importable from
@@ -43,6 +45,15 @@ def build_local_toolset(engine=None) -> list:
         engine = get_engine()
 
     from prussian.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
+    from prussian.tools import spec
+
+    # The docstrings below are terse placeholders: smolagents builds a tool by
+    # parsing this source (name, signature, per-arg docs), so every parameter
+    # must be documented here.  The user-visible description and argument docs
+    # are then replaced from ``prussian.tools.spec`` (the single source of
+    # truth) via ``apply_to_smolagents_tool`` before the tools are returned, so
+    # this adapter presents exactly the same text as the MCP and inspect-ai
+    # adapters.
 
     @tool
     def search_dictionary(
@@ -51,28 +62,13 @@ def build_local_toolset(engine=None) -> list:
         filter_tags: str | None = None,
         context: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Semantic search in the Prussian dictionary.
-
-        Use this when you have a concept or modern-language word and want
-        to find the Prussian equivalent.  Do NOT use for looking up
-        known Prussian forms — use ``lookup_prussian_word`` instead.
+        """Semantic search in the Prussian dictionary (description from spec).
 
         Args:
-            query: search query (German, English, Lithuanian, Latvian,
-                Polish, Russian).  Never add "prussian"/"preußisch" —
-                it's implicit.
+            query: source-language query.
             top_k: number of results to return.
-            filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``,
-                ``"Part+Pass"``, ``"Opt"``.  When set, each entry's
-                forms are filtered to those matching the tags.
-            context: usage context for reranking; when set, the
-                cross-encoder is loaded lazily and results are
-                reranked by relevance.
-
-        Returns:
-            List of entries ``{word, translations, forms?, gender?}``.
-            ``forms`` / ``gender`` are added only when ``filter_tags``
-            matches forms for that entry.
+            filter_tags: optional FST tag filter.
+            context: optional usage context for reranking.
         """
         from prussian.tools.runtime import get_reranker
         reranker = get_reranker() if context else None
@@ -85,74 +81,35 @@ def build_local_toolset(engine=None) -> list:
         text: str,
         fuzzy: bool = False,
     ) -> list[dict[str, Any]]:
-        """Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
-
-        Each token is analyzed via the FST cascade and enriched with
-        translations.  Tokens without FST analyses fall back to
-        dictionary lookup.
+        """Analyze a Prussian sentence via the FST cascade (description from spec).
 
         Args:
-            text: Prussian text (one or more sentences).  Whole
-                sentences are the normal case.
+            text: Prussian text (one or more sentences).
             fuzzy: set True for Levenshtein fallback on OOV tokens.
         """
         return lookup_tool(engine, text, fuzzy=fuzzy)
 
     @tool
     def get_word_forms(lemma: str, features: str | None = None) -> list[dict[str, Any]]:
-        """Get all declension or conjugation forms for a Prussian lemma.
-
-        Returns a flat list of forms with their FST tags.  For verbs,
-        the default shows only indicative present forms plus a list of
-        available features.  Use ``features`` to request specific
-        categories.
+        """Inflect a Prussian lemma into its forms (description from spec).
 
         Args:
-            lemma: Prussian base form (from ``lookup_prussian_word``).
-            features: optional comma-separated feature filter.  Accepts
-                human-readable names (``participle``, ``conjunctive``,
-                ``optative``, ``present``, ``preterite``,
-                ``infinitive``, ``adverb``) or raw FST tags (``Part+Pass``,
-                ``Gen+Pl``, ``Ind+Pres+P1``, ``Ind+Pres+P3``).
+            lemma: Prussian base form.
+            features: optional comma-separated feature filter.
         """
         return wordforms_tool(engine, lemma, features=features)
 
     @tool
     def validate_prussian(text: str, include_conllu: bool = False) -> str:
-        """Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
-
-        The single grammar tool: validates sentences and can also return
-        the full dependency analysis.
+        """Grammar-check Prussian text via FST + CG3 (description from spec).
 
         Args:
-            text: Prussian sentence(s) to check (one or more sentences).
-            include_conllu: also include each sentence's CoNLL-U
-                dependency analysis (field "conllu", with rule provenance
-                ``Rule=/`` / ``AgrParent=`` in MISC) — same pipeline
-                run, no extra cost.  Set True when you need the parse,
-                not just the verdict.
-
-        Returns:
-            JSON: ``{"overall": {"status", "n_sentences", "n_violations"},
-            "sentences": [{sent_id, text, status, violations, coverage,
-            conllu?}, ...]}``.
-
-        Interpretation guide (IMPORTANT):
-
-        - ``verified_in_coverage`` is the ONLY positive evidence of
-          well-formedness: all words analyzed, low ambiguity, and at
-          least one check family applied to the sentence.
-        - ``out_of_coverage`` does NOT mean correct — the checker simply
-          cannot verify (unknown words, collapsed analyses, residual
-          ambiguity, or no applicable check; see coverage.reasons).
-          Never treat it as approval.
-        - ``violations_found``: each ``violations[]`` entry names the
-          rule, the offending form (with index and surviving reading),
-          a message, and a severity — ``"error"`` (case government /
-          valency / person clash) is reliable; ``"warning"`` (adjective
-          agreement, nominative in PP) is often a loanword paradigm
-          gap rather than a real error.
+            text: Prussian sentence(s) to check.
+            include_conllu: also include each sentence's CoNLL-U analysis.
         """
         return validate_tool(text, include_conllu=include_conllu)
 
-    return [search_dictionary, lookup_prussian_word, get_word_forms, validate_prussian]
+    tools = [search_dictionary, lookup_prussian_word, get_word_forms, validate_prussian]
+    for _tool, _spec in zip(tools, (spec.SEARCH, spec.LOOKUP, spec.WORDFORMS, spec.VALIDATE)):
+        spec.apply_to_smolagents_tool(_tool, _spec)
+    return tools

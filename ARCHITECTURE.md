@@ -74,7 +74,10 @@ Funktionen über einer `SearchEngine`; alle Adapter rufen genau diese auf.
 Zusätzlich exponiert als CLI-Scripts `validate` / `search` / `lookup` /
 `wordforms`.  `runtime.py` hält die gemeinsamen Lazy-Singletons
 `get_engine()` / `get_reranker()`, die jeder Adapter teilt (statt je einer
-eigenen Kopie).
+eigenen Kopie).  `spec.py` ist die *Single Source of Truth* für die
+Tool-Beschreibungen (Prosa + Argument-Dokumentation): jeder Adapter bezieht
+seinen Beschreibungstext daraus, sodass MCP, inspect-ai und CLI identische
+Tool-Beschreibungen zeigen.
 
 ### 2. prussian.engine — Wörterbuch- + FST/CG3-Engine
 
@@ -89,11 +92,16 @@ eigenen Kopie).
 ### 3. prussian.adapters — dünne Wrapper
 
 Alle Adapter teilen `SearchEngine` + Reranker über
-`prussian.tools.runtime` (ein Lazy-Singleton-Paar) und wrappen dieselben
-vier `prussian.tools`-Funktionen 1:1.
+`prussian.tools.runtime` (ein Lazy-Singleton-Paar), beziehen ihre
+Tool-Beschreibungen aus `prussian.tools.spec` und wrappen dieselben vier
+`prussian.tools`-Funktionen 1:1.  So bezieht jeder Adapter denselben
+Beschreibungstext, obwohl die Frameworks ihn unterschiedlich lesen: FastMCP
+und inspect-ai über `__doc__` (via `spec.docstring`), smolagents über
+Attribut-Override nach dem Bau (`spec.apply_to_smolagents_tool`), weil es den
+Quelltext parst.
 
-- **`mcp.py`** (FastMCP): exponiert die vier Tools über stdio / streamable-http, plus FST-Health-Check beim Start. Kein LLM-Proxy, keine Prompts/Resources mehr. Entry point `prussian-mcp`. Die MCP-Tool-Docstrings sind die kanonische Beschreibung.
-- **`inspect_tools.py`**: inspect-ai `@tool`-Wrapper für die Reconstruction-Eval in `evals/`. Bewusst *instruktive* Docstrings ("Use this tool to …") wegen der minimalen Prompt-Fläche der Eval.
+- **`mcp.py`** (FastMCP): exponiert die vier Tools über stdio / streamable-http, plus FST-Health-Check beim Start. Kein LLM-Proxy, keine Prompts/Resources mehr. Entry point `prussian-mcp`.
+- **`inspect_tools.py`**: inspect-ai `@tool`-Wrapper für die Reconstruction-Eval in `evals/`.
 - **`agent/`** (prussian-agent CLI, *legacy*): `cli.py` (argparse, `--validate-only`, `--mcp-url`, `--json`), `runner.py` (`run_agent`, `RunResult`, `extract_candidate`, `parse_last_validation`), `tools.py` (smolagents-Wrapper). smolagents ist deprecated — der Pfad bleibt lauffähig, ist aber kein Designtreiber mehr.
 
 Die vier MCP-Tools:
