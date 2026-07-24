@@ -126,6 +126,81 @@ def _infer_gender(engine, word: str) -> str:
     return ""
 
 
+# ── Compact text formatting ──────────────────────────────────────────────────
+
+DISPLAY_LANGS = ("engl", "miks", "leit", "latt")
+
+
+def format_search_results(chunks: list[dict]) -> str:
+    """Format chunk search results as compact dictionary text.
+
+    One block per chunk: multi-member chunks show a lemma/POS/score header
+    followed by indented ``word: engl | miks | leit | latt`` lines; solo
+    chunks (one member) collapse to a single line.  With ``context``
+    reranking, ``best_line``'s matching entry is marked with ``→``.
+    """
+    if not chunks:
+        return "no results."
+    return "\n\n".join(_format_chunk(c) for c in chunks)
+
+
+def _format_entry_line(entry: dict) -> str:
+    """Format one entry as 'word: en | de | lt | lv'."""
+    word = entry.get("word", "")
+    translations = entry.get("translations", {})
+    parts = []
+    for lang in DISPLAY_LANGS:
+        vals = translations.get(lang) or []
+        if isinstance(vals, str):
+            vals = [vals]
+        parts.append("; ".join(vals))
+    return f"{word}: {' | '.join(parts)}"
+
+
+def _best_word(best_line: str | None) -> str | None:
+    """Extract the headword from a best_line string like 'word: ...' or 'word (pos): ...'."""
+    if not best_line:
+        return None
+    head = best_line.split(":", 1)[0]
+    head = head.split("(", 1)[0]
+    return head.strip()
+
+
+def _filtered_forms_for(chunk: dict, word: str) -> list[dict]:
+    for fe in chunk.get("filtered_entries", []) or []:
+        if fe.get("word") == word:
+            return fe.get("forms", [])
+    return []
+
+
+def _format_chunk(chunk: dict) -> str:
+    lemma = chunk.get("lemma", "")
+    pos = chunk.get("pos") or ""
+    score = chunk.get("rerank_score", chunk.get("score", 0)) or 0
+    members = chunk.get("members", [])
+    entries = chunk.get("entries", [])
+    bw = _best_word(chunk.get("best_line"))
+
+    if len(members) <= 1:
+        entry = entries[0] if entries else {"word": lemma, "translations": {}}
+        word, rest = _format_entry_line(entry).split(":", 1)
+        lines_out = [f"{word}, score={score:.3f}:{rest}"]
+        for f in _filtered_forms_for(chunk, entry.get("word", "")):
+            lines_out.append(f"  {f['tags']}: {f['form']}")
+        return "\n".join(lines_out)
+
+    header = f"{lemma} ({pos}), score={score:.3f}:" if pos else f"{lemma}, score={score:.3f}:"
+    body = [header]
+    for entry in entries:
+        line = _format_entry_line(entry)
+        headword = entry.get("word", "")
+        marker = "→ " if bw and headword == bw else "  "
+        body.append(f"{marker}{line}")
+        for f in _filtered_forms_for(chunk, headword):
+            body.append(f"    {f['tags']}: {f['form']}")
+    return "\n".join(body)
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
@@ -197,47 +272,6 @@ def main(argv: list[str] | None = None) -> int:
 
         sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
     else:
-        if not output:
-            print("no results.")
-        for i, e in enumerate(output, 1):
-            _print_chunk(i, e, context=args.context)
+        print(format_search_results(output))
 
     return 0
-
-
-def _print_chunk(i: int, chunk: dict, *, context: str | None = None) -> None:
-    """Render a single chunk result."""
-    lemma = chunk.get("lemma", "")
-    pos = chunk.get("pos", "")
-    score = chunk.get("rerank_score", chunk.get("score", 0))
-    members = chunk.get("members", [])
-    header = f"  {i}. {lemma}"
-    if pos:
-        header += f" ({pos})"
-    header += f"  [{score:.3f}]"
-    if members:
-        header += f"  members: {', '.join(members)}"
-    print(header)
-    lines = chunk.get("lines")
-    if lines:
-        best = chunk.get("best_line", "")
-        for ln in sorted(lines, key=lambda x: x["rank"]):
-            marker = " →" if ln["text"] == best else ""
-            print(f"     [{ln['rank']}] {ln['text']}{marker}")
-    entries = chunk.get("entries", [])
-    if entries:
-        for ed in entries[:3]:
-            trans = ed.get("translations", {})
-            trans_str = (
-                ", ".join(f"{lang}: {t}" for lang, t in trans.items())
-                if isinstance(trans, dict)
-                else str(trans)
-            )
-            print(f"     entry: {ed['word']} — {trans_str}")
-    fe = chunk.get("filtered_entries", [])
-    if fe:
-        for fed in fe[:5]:
-            forms_str = "; ".join(
-                f"{f['tags']}: {f['form']}" for f in fed.get("forms", [])
-            )
-            print(f"     filtered: {fed['word']} — {forms_str}")

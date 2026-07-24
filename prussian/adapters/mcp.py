@@ -21,6 +21,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from prussian.engine.fst.validate import check_fsg_pipeline
 from prussian.tools import lookup_tool, search_tool, spec, validate_tool, wordforms_tool
+from prussian.tools.search import format_search_results
 from prussian.tools.runtime import get_engine, get_reranker
 
 # ── Server ────────────────────────────────────────────────────────────────────
@@ -61,8 +62,8 @@ def search_dictionary(
     top_k: int = 10,
     filter_tags: str | None = None,
     context: str = "",
-) -> list[dict[str, Any]]:
-    return search_tool(
+) -> str:
+    results = search_tool(
         get_engine(),
         query,
         top_k=top_k,
@@ -70,6 +71,7 @@ def search_dictionary(
         reranker=get_reranker() if context else None,
         context=context or None,
     )
+    return format_search_results(results)
 
 
 def lookup_prussian_word(text: str, fuzzy: bool = False) -> list[dict[str, Any]]:

@@ -46,6 +46,7 @@ def build_local_toolset(engine=None) -> list:
 
     from prussian.tools import search_tool, lookup_tool, wordforms_tool, validate_tool
     from prussian.tools import spec
+    from prussian.tools.search import format_search_results
 
     # The docstrings below are terse placeholders: smolagents builds a tool by
     # parsing this source (name, signature, per-arg docs), so every parameter
@@ -61,7 +62,7 @@ def build_local_toolset(engine=None) -> list:
         top_k: int = 10,
         filter_tags: str | None = None,
         context: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> str:
         """Semantic search in the Prussian dictionary (description from spec).
 
         Args:
@@ -72,9 +73,10 @@ def build_local_toolset(engine=None) -> list:
         """
         from prussian.tools.runtime import get_reranker
         reranker = get_reranker() if context else None
-        return search_tool(engine, query, top_k=top_k,
-                           filter_tags=filter_tags,
-                           reranker=reranker, context=context)
+        results = search_tool(engine, query, top_k=top_k,
+                              filter_tags=filter_tags,
+                              reranker=reranker, context=context)
+        return format_search_results(results)
 
     @tool
     def lookup_prussian_word(

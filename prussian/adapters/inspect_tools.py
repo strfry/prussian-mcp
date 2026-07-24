@@ -22,6 +22,7 @@ from inspect_ai.tool import tool
 from prussian.tools import lookup_tool, search_tool, spec, validate_tool, wordforms_tool
 from prussian.tools.runtime import get_engine as _get_engine
 from prussian.tools.runtime import get_reranker as _get_reranker
+from prussian.tools.search import format_search_results
 
 
 def _dumps(obj: Any) -> str:
@@ -47,7 +48,7 @@ def search_dictionary():
                 context=context or None,
             )
         )
-        return _dumps(result)
+        return format_search_results(result)
 
     execute.__doc__ = spec.docstring(spec.SEARCH)
     return execute

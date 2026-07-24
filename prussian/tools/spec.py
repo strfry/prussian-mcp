@@ -69,9 +69,10 @@ SEARCH = ToolSpec(
         "find the Prussian equivalent — the first step for every content word "
         "you translate.  Do NOT use for looking up known Prussian forms — use "
         "lookup_prussian_word instead.\n\n"
-        "Returns a list of chunks {lemma, members, pos, score, text, entries} "
-        "(each chunk is a co-embedded lemma-cluster; with `context` set, the top "
-        "chunks also get best_line / lines)."
+        "Returns compact dictionary text: one block per chunk. Multi-member "
+        "chunks show \"lemma (pos), score=X:\" followed by indented entry "
+        "lines \"word: engl | miks | leit | latt\". Solo chunks use a single "
+        "line. With `context` set, \"→\" marks the most relevant entry."
     ),
     args={
         "query": (
