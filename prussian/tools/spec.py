@@ -68,7 +68,9 @@ SEARCH = ToolSpec(
         "Use this when you have a concept or modern-language word and want to "
         "find the Prussian equivalent — the first step for every content word "
         "you translate.  Do NOT use for looking up known Prussian forms — use "
-        "lookup_prussian_word instead.\n\n"
+        "lookup_prussian_word instead.  The search is deterministic: identical "
+        "arguments always return identical results — never repeat a call with "
+        "the same query.\n\n"
         "Returns compact dictionary text: one block per chunk. Multi-member "
         "chunks show \"lemma (pos), score=X:\" followed by indented entry "
         "lines \"word: engl | miks | leit | latt\". Solo chunks use a single "
@@ -76,8 +78,10 @@ SEARCH = ToolSpec(
     ),
     args={
         "query": (
-            "search query (German, English, Lithuanian, Latvian, Polish, "
-            "Russian).  Never add \"prussian\"/\"preußisch\" — it's implicit."
+            "search query (Lithuanian, Latvian, English, German, Polish, "
+            "Russian) — Lithuanian/Latvian usually give the best hits "
+            "(closest relatives); prefer simple base concepts over opaque "
+            "compounds.  Never add \"prussian\"/\"preußisch\" — it's implicit."
         ),
         "top_k": "number of results to return.",
         "filter_tags": (
