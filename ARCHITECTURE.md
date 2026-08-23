@@ -56,14 +56,17 @@ prussian-mcp/
 
 ## Daten
 
-### Wörterbuch (data/twanksta_entries.json)
-- ~10.737 Einträge (via Release-Asset von strfry/prussian-corpus)
+### Wörterbuch (../corpus/parsed/twanksta_entries.json)
+- ~10.753 Einträge; kanonische Quelle, gebaut von `scripts/twanksta_parse.py`
+  im corpus-Repo — keine Kopie im mcp-Repo (`PRUSSIAN_DICTIONARY` überschreibt
+  den Pfad bei Bedarf)
 - Felder: word, paradigm, gender, desc, translations, forms
 - Übersetzungen: miks (DE), engl (EN), leit (LT), lett (Lettisch), pols (Polnisch), mask (Russisch)
 
 ### Embeddings (embeddings/)
 - Semantische Suche mit konfigurierbarem Embedding-Modell
-- Query/Passage Prefix via ENV konfigurierbar
+- Query-Prefix reist im Store-Meta (`meta["query_prefix"]`, Vorrang);
+  `QUERY_PREFIX` aus der Env ist nur Fallback für Legacy-Stores
 
 ## Komponenten
 

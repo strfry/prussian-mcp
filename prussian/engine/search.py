@@ -54,6 +54,11 @@ class SearchEngine:
         print(f"Loading embeddings ({EMBEDDINGS_PATH.name})...", file=sys.stderr)
         self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
 
+        # Der Query-Prefix reist mit dem Store (Meta); QUERY_PREFIX aus der
+        # Env greift nur für Stores ohne Meta-Eintrag.  Ein LEERER Meta-Wert
+        # ist gültig (z. B. Voyage: Asymmetrie via input_type-Parameter).
+        self.query_prefix = self.store.meta.get("query_prefix", QUERY_PREFIX)
+
         # The retrieval store must be a chunk store: records carry text + members.
         recs = self.store.records
         if recs and not ("text" in recs[0] and "members" in recs[0]):
@@ -245,10 +250,10 @@ class SearchEngine:
 
         if self.bm25 is not None:
             hits = hybrid_query(self.store, self.embedder, self.bm25, query,
-                                k=top_k, query_prefix=QUERY_PREFIX)
+                                k=top_k, query_prefix=self.query_prefix)
         else:
             hits = self.store.query(self.embedder, query,
-                                    k=top_k, query_prefix=QUERY_PREFIX)
+                                    k=top_k, query_prefix=self.query_prefix)
 
         results = []
         for record, score in hits:

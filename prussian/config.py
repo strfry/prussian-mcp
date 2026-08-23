@@ -8,40 +8,29 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 EMBEDDINGS_DIR = PROJECT_ROOT.parent / "embeddings" / "data"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
+#PROMPTS_DIR = Path("../../prompts")
 
-DICTIONARY_PATH = Path(os.getenv("PRUSSIAN_DICTIONARY", str(DATA_DIR / "twanksta_entries.json")))
+# Kanonisches Dictionary: wird im corpus-Repo gebaut (scripts/twanksta_parse.py)
+# und von allen Konsumenten direkt dort referenziert — keine Kopien in den Repos.
+CORPUS_PARSED = PROJECT_ROOT.parent / "corpus" / "parsed"
+DICTIONARY_PATH = Path(os.getenv(
+    "PRUSSIAN_DICTIONARY", str(CORPUS_PARSED / "twanksta_entries.json")))
 AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
-# ── Embedding backend (deprecated pass-throughs) ──────────────────────────────
-# These env vars are now consumed by prussian_embeddings.env_config() at package init.
-# They are kept for backwards compat with existing env files (.sh, .env).
-# Backend selection, model loading, API config all happen in prussian_embeddings package.
-EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "fastembed").lower()
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "")
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
-API_KEY = (
-    os.getenv("API_KEY", "")
-    or os.getenv("JINA_API_KEY", "")
-    or os.getenv("RERANK_API_KEY", "")
-)
-API_BASE_URL = (
-    os.getenv("API_BASE_URL", "")
-    or os.getenv("RERANK_BASE_URL", "")
-    or os.getenv("JINA_BASE_URL", "https://api.jina.ai")
-)
-
 # ── Embedding storage and search ──────────────────────────────────────────────
-# Precomputed corpus embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*".
+# Backend/Modell/API-Keys liest ausschließlich prussian_embeddings.env_config()
+# aus den Env-Vars (Quelle: mcp/env.<provider>.sh).  Precomputed corpus
+# embeddings live at "<EMBEDDINGS_DIR>/<EMBEDDINGS_NAME>.*"; derselbe Name
+# steuert auch den Schreibpfad von `make store` im embeddings-Repo.
 EMBEDDINGS_NAME = os.getenv("EMBEDDINGS_NAME", "embeddings_fastembed")
 EMBEDDINGS_PATH = EMBEDDINGS_DIR / EMBEDDINGS_NAME
 
-# Asymmetric query encoding prefix
+# Query-Prefix-Fallback für Stores OHNE meta["query_prefix"] (Legacy-e5-Stores).
+# Aktuelle Stores tragen ihren Prefix in der Meta — die hat Vorrang.
 QUERY_PREFIX = os.getenv("QUERY_PREFIX", "Query: ")
 
 # ── Chunk retrieval ───────────────────────────────────────────────────────────
 # Chunk store: one vector per lemma-cluster instead of per headword.
-# QUERY_PREFIX must match the chunk model's expected prefix (e.g. "query: " for e5-large).
 
 # BM25 + dense RRF hybrid recall (set "0" to force dense-only for debugging).
 HYBRID_SEARCH = os.getenv("HYBRID_SEARCH", "1") not in ("0", "false", "no")
