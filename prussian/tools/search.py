@@ -15,31 +15,10 @@ def search_tool(
     reranker=None,
     context: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Semantic search in the Prussian dictionary.
+    """Semantic dictionary search core.
 
-    Returns co-embedded lemma-cluster chunks; use it to find the Prussian
-    equivalent of a concept.  Do NOT use for known Prussian forms — use
-    ``lookup_tool`` instead.
-
-    Args:
-        engine: ``SearchEngine`` instance.
-        query: search query (German, English, Lithuanian, Latvian, Polish,
-            Russian).
-        top_k: number of chunks to return.
-        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``.  When set,
-            each chunk gets a ``filtered_entries`` list (per-member forms
-            matching the tags).
-        reranker: cross-encoder reranker (from ``build_reranker()``).  Used
-            when ``context`` is set.
-        context: optional usage context; chunks are reranked by the
-            cross-encoder against this text (chunk-level), then the top
-            ``top_k`` are returned.  Each result carries ``rerank_score``.
-            When ``context`` is set, ``CHUNK_RERANK_TOPN`` determines how
-            many candidates are retrieved before reranking.
-
-    Returns:
-        List of chunks ``{lemma, members, pos, score, rerank_score?, text,
-        entries, best_line?, lines?, filtered_entries?}``.
+    The model-facing tool text lives in :data:`prussian.tools.spec.SEARCH` —
+    do not duplicate it here.
     """
     if context and reranker:
         from prussian_embeddings import annotate_chunk
