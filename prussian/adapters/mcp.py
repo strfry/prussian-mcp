@@ -29,12 +29,14 @@ from prussian.tools.runtime import get_engine, get_reranker
 # Allow strfry.org for remote access via SSH tunnel.
 _security = TransportSecuritySettings(
     enable_dns_rebinding_protection=True,
-    allowed_hosts=["127.0.0.1:*", "localhost:*", "strfry.org:*", "strfry.org"],
+    allowed_hosts=["127.0.0.1:*", "localhost:*", "strfry.org:*", "strfry.org", "prussian.uber.space:*", "prussian.uber.space"],
     allowed_origins=[
         "http://127.0.0.1:*",
         "http://localhost:*",
         "https://strfry.org",
         "https://strfry.org:*",
+        "https://prussian.uber.space",
+        "https://prussian.uber.space:*",
     ],
 )
 mcp = FastMCP(
