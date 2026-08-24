@@ -7,7 +7,14 @@ from typing import List, Dict, Any, Optional
 
 from prussian.config import EMBEDDINGS_PATH, QUERY_PREFIX, HYBRID_SEARCH, DICTIONARY_PATH
 
-from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index, hybrid_query
+from prussian_embeddings import (
+    get_embedder,
+    EmbeddingStore,
+    BM25Index,
+    hybrid_query,
+    prefix_tokens,
+    ngram_tokens,
+)
 from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
 
 
@@ -67,7 +74,18 @@ class SearchEngine:
                 "(records lack 'text'/'members'). Build one with "
                 "`prussian-embeddings-build-chunks`."
             )
-        self.bm25 = BM25Index([r["text"] for r in recs]) if HYBRID_SEARCH else None
+        # Three lexical channels over the same chunk texts, fused with the
+        # dense one in `query()`.  Exact tokens are the precise channel;
+        # prefix-truncated tokens and character n-grams cover the inflected
+        # queries an agent actually types ("ženklai" for "ženklas"), which
+        # exact BM25 misses entirely and the dense channel only half-catches.
+        chunk_texts = [r["text"] for r in recs]
+        if HYBRID_SEARCH:
+            self.bm25 = BM25Index(chunk_texts)
+            self.bm25_prefix = BM25Index(chunk_texts, tokenizer=prefix_tokens)
+            self.bm25_ngram = BM25Index(chunk_texts, tokenizer=ngram_tokens)
+        else:
+            self.bm25 = self.bm25_prefix = self.bm25_ngram = None
 
         # Word/form indices + translation enrichment come from the dictionary
         # (the canonical source), not a second embedding store.
@@ -250,7 +268,9 @@ class SearchEngine:
 
         if self.bm25 is not None:
             hits = hybrid_query(self.store, self.embedder, self.bm25, query,
-                                k=top_k, query_prefix=self.query_prefix)
+                                k=top_k, query_prefix=self.query_prefix,
+                                bm25_prefix=getattr(self, "bm25_prefix", None),
+                                bm25_ngram=getattr(self, "bm25_ngram", None))
         else:
             hits = self.store.query(self.embedder, query,
                                     k=top_k, query_prefix=self.query_prefix)

@@ -58,6 +58,10 @@ def _make_engine(hybrid=True):
             return_value=[(i, 0.8 - i * 0.1) for i in range(len(records))]
         )
 
+    # query() reads this (store-meta query prefix, commit 5f0e298); the real
+    # __init__ sets it from store.meta and this fixture bypasses __init__.
+    engine.query_prefix = ""
+
     engine.embedder = MagicMock()
     engine.embedder.get_embedding = MagicMock(
         return_value=np.random.randn(8).astype(np.float32)
