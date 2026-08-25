@@ -18,6 +18,16 @@ būtwei "to be", indicative present:
 - asma (1sg), assei (2sg), ast (3sg AND 3pl), asmai (1pl), astei (2pl)
 - For other moods/tenses call get_word_forms("būtwei", features=…).
 
+wīrstwei "to become" (FUTURE auxiliary), indicative present:
+
+- wīrst (1sg/2sg/3sg AND 3pl), wīrstmai (1pl), wīrstei (2pl)
+- FUTURE = wīrst(mai/ei) + past active participle of the main verb,
+  agreeing in gender/number with the subject:
+  get_word_forms("<verb>", features="Part+Pret").
+  E.g. as wīrst segīwuns (m) / segīwusi (f) — I will do.
+- Invariable short form: the neuter participle, e.g. as wīrst būwus.
+- See Syntax rules §11 for the full paradigm.
+
 stas "that; der/die/das" (demonstrative):
 
 - Nom: stas (Sg+Masc), stāi (Sg+Fem; Pl+Masc/Neut), stās (Pl+Fem),
@@ -71,7 +81,7 @@ get_word_forms with these):
 
 - turītun = haben; also müssen/sollen
 - mazītwei = können; warītun = imstande sein
-- wīrstwei / pastātwei = werden
+- pastātwei = werden (see wīrstwei above for the FUTURE auxiliary use)
 - ēitwei = gehen; perēitwei = kommen
 - segītun = tun; tikīntun = machen, herstellen
 - "wollen" has NO full verb: only defective kwāi (1/2sg present) and
