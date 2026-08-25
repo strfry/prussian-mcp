@@ -65,18 +65,6 @@ def lookup_prussian_word(word: str, fuzzy: bool = True) -> list[dict]:
         return []
 
 
-def get_word_forms(lemma: str) -> dict:
-    """Get all declension/conjugation forms for a lemma."""
-    engine = get_search_engine()
-    if engine is None:
-        return {}
-    try:
-        return engine.get_word_forms(lemma)
-    except Exception as e:
-        print(f"Get forms error: {e}", file=sys.stderr)
-        return {}
-
-
 def format_leipzig(lookup_result: dict) -> str:
     """Format lookup result as Leipzig-style gloss."""
     word = lookup_result.get("word", "")
@@ -135,18 +123,6 @@ def call_mcp(tool_name: str, arguments: dict) -> dict:
     except Exception as e:
         print(f"MCP Error: {e}", file=sys.stderr)
         return {"error": str(e)}
-
-
-def get_word_forms(lemma: str) -> dict:
-    """Get word forms using local search engine."""
-    engine = get_search_engine()
-    if engine is None:
-        return {}
-    try:
-        return engine.get_word_forms(lemma)
-    except Exception as e:
-        print(f"Get forms error: {e}", file=sys.stderr)
-        return {}
 
 
 def generate_prompt(grammar: str, seed: int, count: int = 10) -> list[dict]:

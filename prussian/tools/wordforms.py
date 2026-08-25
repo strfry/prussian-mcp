@@ -39,7 +39,7 @@ def wordforms_tool(
         fst_available,
         resolve_features,
         match_tags,
-        forms_with_tags,
+        generate_paradigm,
     )
 
     word_lower = lemma.lower().strip()
@@ -72,7 +72,7 @@ def wordforms_tool(
     results: list[dict[str, Any]] = []
 
     for entry in entries:
-        fw = forms_with_tags(engine, entry) if fst_available() else []
+        fw = generate_paradigm(engine, entry) if fst_available() else []
 
         # Detect POS from tag inventory
         all_tag_strs = [f["tags"] for f in fw]
@@ -113,20 +113,9 @@ def wordforms_tool(
 
         # Format output
         forms_out = [
-            {"form": f["form"], "tags": f["tags"] if f["tags"] else []}
+            {"form": f["form"], "tags": f["tags"]}
             for f in filtered
         ]
-
-        # Include non-FST forms with PGR fallback (only when no filter)
-        has_filter = wanted_tags is not None or (is_verb and not features)
-        if not has_filter:
-            for f in fw:
-                if not f["tags"] and f.get("pgr"):
-                    forms_out.append({
-                        "form": f["form"],
-                        "tags": [],
-                        "pgr": f["pgr"],
-                    })
 
         entry_out: dict[str, Any] = {
             "lemma": entry.get("word", ""),
@@ -242,11 +231,8 @@ def main(argv: list[str] | None = None) -> int:
             for f in forms:
                 tags = f.get("tags", [])
                 form = f.get("form", "")
-                pgr = f.get("pgr", "")
                 if tags:
                     print(f"  {form}  [{' + '.join(tags)}]")
-                elif pgr:
-                    print(f"  {form}  [{pgr}]")
                 else:
                     print(f"  {form}")
 

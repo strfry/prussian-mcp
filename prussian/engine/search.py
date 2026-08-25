@@ -15,7 +15,7 @@ from prussian_embeddings import (
     prefix_tokens,
     ngram_tokens,
 )
-from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
+from prussian.engine.morphology import extract_pgr_from_entry, parse_pgr, build_pgr
 
 
 class SearchEngine:
@@ -292,123 +292,6 @@ class SearchEngine:
                 "entries": entries,
             })
         return results
-
-    def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:
-        """
-        Get all declension or conjugation forms for a Prussian lemma.
-
-        Args:
-            lemma: Prussian lemma (base form)
-            filter_pgr: Optional PGR filter, e.g. "GEN.PL" or "PRS.1.SG"
-
-        Returns:
-            Dictionary with lemma, translations, and structured forms by category
-        """
-        word_lower = lemma.lower().strip()
-        if word_lower not in self.word_to_entry:
-            return {"error": f"Word not found: {lemma}"}
-
-        entries = self.word_to_entry[word_lower]
-        results = []
-        for entry in entries:
-            translations = entry.get("translations", {})
-            raw_forms = entry.get("forms", {})
-
-            all_forms_pgr = extract_pgr_from_entry(entry)
-
-            filtered_forms = []
-            for form, pgr in all_forms_pgr:
-                if filter_pgr and not match_pgr(pgr, filter_pgr):
-                    continue
-                filtered_forms.append({"form": form, "pgr": pgr})
-
-            categorized_forms = self._structure_forms(raw_forms, entry)
-
-            # Determine which categories actually have data
-            available_categories = [
-                cat for cat, items in categorized_forms.items() if items
-            ]
-
-            result = {
-                "lemma": entry.get("word", ""),
-                "translations": translations,
-                "gender": entry.get("gender", ""),
-                "forms": categorized_forms,
-                "available_categories": available_categories,
-                "desc": entry.get("desc", ""),
-            }
-            if filter_pgr:
-                result["filtered_forms"] = filtered_forms
-
-            results.append(result)
-
-        return results
-
-    def _structure_forms(self, raw_forms: Dict, entry: Dict) -> Dict[str, Any]:
-        """Convert raw forms into a structured dict with named categories."""
-        structured = {}
-
-        if raw_forms.get("indicative"):
-            indicative = []
-            for mood_data in raw_forms["indicative"]:
-                tense = mood_data.get("tense", "")
-                for fi in mood_data.get("forms", []):
-                    pronoun = fi.get("pronoun", "")
-                    form_text = fi.get("form", "")
-                    person, number = _parse_pronoun(pronoun)
-                    indicative.append({
-                        "tense": tense,
-                        "person": person,
-                        "number": number,
-                        "pronoun": pronoun,
-                        "form": form_text,
-                    })
-            structured["indicative"] = indicative
-
-        if raw_forms.get("optative"):
-            structured["optative"] = raw_forms["optative"]
-
-        if raw_forms.get("subjunctive"):
-            subj = []
-            for fi in raw_forms["subjunctive"]:
-                pronoun = fi.get("pronoun", "")
-                form_text = fi.get("form", "")
-                person, number = _parse_pronoun(pronoun)
-                subj.append({
-                    "person": person,
-                    "number": number,
-                    "pronoun": pronoun,
-                    "form": form_text,
-                })
-            structured["subjunctive"] = subj
-
-        if raw_forms.get("imperative"):
-            imp = []
-            for fi in raw_forms["imperative"]:
-                pronoun = fi.get("pronoun", "")
-                form_text = fi.get("form", "")
-                person, number = _parse_pronoun(pronoun)
-                imp.append({
-                    "person": person,
-                    "number": number,
-                    "pronoun": pronoun,
-                    "form": form_text,
-                })
-            structured["imperative"] = imp
-
-        if raw_forms.get("participles"):
-            structured["participles"] = raw_forms["participles"]
-
-        if raw_forms.get("declension"):
-            structured["declension"] = raw_forms["declension"]
-
-        if raw_forms.get("adverb"):
-            structured["adverb"] = raw_forms["adverb"]
-
-        if raw_forms.get("comparison"):
-            structured["comparison"] = raw_forms["comparison"]
-
-        return structured
 
     def lookup(self, prussian_word: str, fuzzy: bool = False, apply_rules: bool = True) -> List[Dict[str, Any]]:
         """

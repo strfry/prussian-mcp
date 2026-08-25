@@ -40,13 +40,21 @@ except ImportError:
     from prussian_fst.cg3_pipeline import flookup_batch  # type: ignore[no-redef]
 
 try:
-    from prussian_fst.cg3_pipeline import DEFAULT_FST, DEFAULT_LENIENT
+    from prussian_fst.cg3_pipeline import DEFAULT_FST, DEFAULT_FST_GEN, DEFAULT_LENIENT
 except ImportError:
     from pathlib import Path
 
     _FST_DIR = Path(__file__).resolve().parents[2] / "prussian-fst" / "fst"
     DEFAULT_FST = _FST_DIR / "build/base.hfstol"
     DEFAULT_LENIENT = _FST_DIR / "build/lenient.hfstol"
+    DEFAULT_FST_GEN = _FST_DIR / "build/base.gen.hfstol"
+
+try:
+    from prussian_fst.gen_lexc import classify as _classify_entry
+    from prussian.engine.fst.paradigm_order import build_paradigm_queries
+except ImportError:
+    _classify_entry = None
+    build_paradigm_queries = None  # type: ignore[assignment]
 
 
 def fst_available() -> bool:
@@ -79,6 +87,7 @@ FEATURE_MAP: dict[str, str] = {
     "genitive": "Gen",
     "dative": "Dat",
     "accusative": "Akk",
+    "acc": "Akk",
     "singular": "Sg",
     "plural": "Pl",
     "masculine": "Masc",
@@ -335,3 +344,44 @@ def forms_with_tags(engine: Any, entry: dict) -> list[dict]:
         })
 
     return result
+
+
+def _prep_words(engine: Any) -> set[str]:
+    """Bekannte Präpositions-Lemmata (für verb_valence_tags), am engine
+    gecacht — einmalig aus den bereits geladenen Dictionary-Einträgen
+    abgeleitet, kein Zugriff auf die rohe Corpus-JSON nötig."""
+    cached = getattr(engine, "_prep_words_cache", None)
+    if cached is not None:
+        return cached
+    words: set[str] = set()
+    if _classify_entry is not None:
+        for entry in getattr(engine, "entries", []):
+            if _classify_entry(entry) == "preposition":
+                w = entry.get("word", "")
+                if w:
+                    words.add(w.lower())
+    engine._prep_words_cache = words
+    return words
+
+
+def generate_paradigm(engine: Any, entry: dict) -> list[dict]:
+    """Alle Paradigmen-Zellen für *entry*, generiert via FST-Generierungs-
+    richtung (prussian_fst.api.generate) statt Dictionary-Reanalyse.
+
+    Rückgabe: [{"form": str, "tags": [str]}, ...] — ein Eintrag pro
+    (Zelle, Oberfläche), nur für Tag-Kombinationen, die der FST
+    tatsächlich generiert; im Lexikon fehlende Zellen werden stillschweigend
+    übersprungen.
+    """
+    if fst_api is None or build_paradigm_queries is None:
+        return []
+    prep_words = _prep_words(engine)
+    cells = build_paradigm_queries(entry, prep_words)
+    if not cells:
+        return []
+    with_results = fst_api.generate(list(cells.values()), fst_path=DEFAULT_FST_GEN)
+    out: list[dict] = []
+    for tag_suffix, query in cells.items():
+        for surface in with_results.get(query, []):
+            out.append({"form": surface, "tags": [tag_suffix.lstrip("+")]})
+    return out
