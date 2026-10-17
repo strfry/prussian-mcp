@@ -14,9 +14,13 @@ Run it::
 
 import argparse
 import os
+import re
 from typing import Any
 
+import uvicorn
 from mcp.server.fastmcp import FastMCP
+from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from mcp.server.transport_security import TransportSecuritySettings
 
 from prussian.engine.fst.validate import check_fsg_pipeline
@@ -25,16 +29,31 @@ from prussian.tools.runtime import get_engine, get_reranker
 
 # ── Server ────────────────────────────────────────────────────────────────────
 
-# Allow strfry.org for remote access via SSH tunnel.
+# Allow strfry.org for remote access via SSH tunnel.  Extra browser origins
+# (e.g. a local web UI on a LAN IP) can be added via MCP_CORS_ORIGINS
+# (comma-separated, ``:*`` = any port); ``*`` disables the origin check.
+_extra_origins = [o.strip() for o in os.getenv("MCP_CORS_ORIGINS", "").split(",") if o.strip()]
+_allowed_origins = [
+    "http://127.0.0.1",
+    "http://127.0.0.1:*",
+    "http://localhost",
+    "http://localhost:*",
+    "https://strfry.org",
+    "https://strfry.org:*",
+    *_extra_origins,
+]
+_allow_any_origin = "*" in _extra_origins
 _security = TransportSecuritySettings(
-    enable_dns_rebinding_protection=True,
-    allowed_hosts=["127.0.0.1:*", "localhost:*", "strfry.org:*", "strfry.org"],
-    allowed_origins=[
-        "http://127.0.0.1:*",
-        "http://localhost:*",
-        "https://strfry.org",
-        "https://strfry.org:*",
+    enable_dns_rebinding_protection=not _allow_any_origin,
+    allowed_hosts=[
+        "127.0.0.1:*",
+        "localhost:*",
+        "strfry.org:*",
+        "strfry.org",
+        # Host header values when served on a LAN IP, e.g. "192.168.1.50:*".
+        *[h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()],
     ],
+    allowed_origins=_allowed_origins,
 )
 mcp = FastMCP(
     "Prussian Dictionary",
@@ -100,6 +119,33 @@ for _fn, _spec in (
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
+def _origin_regex(patterns: list[str]) -> str:
+    """Turn ``scheme://host[:*]`` patterns into one regex for CORSMiddleware."""
+    parts = []
+    for p in patterns:
+        if p == "*":
+            return ".*"
+        if p.endswith(":*"):
+            parts.append(re.escape(p[:-2]) + r"(:\d+)?")
+        else:
+            parts.append(re.escape(p))
+    return "^(" + "|".join(parts) + ")$"
+
+
+def web_app() -> Starlette:
+    """Streamable-HTTP app wrapped in CORS so browser-based clients work."""
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=_origin_regex(_allowed_origins),
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["mcp-session-id", "mcp-protocol-version"],
+    )
+    return app
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prussian Dictionary MCP server (four tools + FST health).",
@@ -132,7 +178,12 @@ def main() -> None:
             f"Starting MCP server (streamable-http) on "
             f"http://{mcp.settings.host}:{mcp.settings.port}"
         )
-        mcp.run(transport="streamable-http")
+        uvicorn.run(
+            web_app(),
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level=mcp.settings.log_level.lower(),
+        )
     else:
         print("Starting MCP server (stdio)")
         mcp.run(transport="stdio")
