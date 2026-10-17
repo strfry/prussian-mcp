@@ -21,14 +21,36 @@ def validate_tool(text: str, include_conllu: bool = False) -> str:
             / ``AgrParent=`` in MISC) — same pipeline run, no extra cost.
 
     Returns:
-        JSON string: ``{"overall": {"status", "n_sentences",
-        "n_violations"}, "sentences": [{sent_id, text, status,
-        violations, coverage, conllu?}, ...],
-        "spelling_corrections": [...]}``
+        Compact JSON string (no indentation, empty fields dropped):
+        ``{"overall": {"status", "n_sentences", "n_violations"},
+        "sentences": [{sent_id, text, status, violations?, coverage,
+        conllu?}, ...], "spelling_corrections"?: [...]}``
     """
     from prussian.engine.fst.validate import validate_with_corrections
 
-    return validate_with_corrections(text, include_conllu=include_conllu)
+    raw = validate_with_corrections(text, include_conllu=include_conllu)
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    for s in data.get("sentences", []):
+        for v in s.get("violations", []):
+            v.pop("tag", None)  # "&<rule>" — duplicates "rule"
+    data["spelling_corrections"] = [
+        c for c in data.get("spelling_corrections", [])
+        if c.get("original") != c.get("corrected")
+    ]
+    return json.dumps(_prune(data), ensure_ascii=False, separators=(",", ":"))
+
+
+def _prune(obj):
+    """Drop empty containers/strings/None recursively (keeps 0 and False)."""
+    if isinstance(obj, dict):
+        pruned = {k: _prune(v) for k, v in obj.items()}
+        return {k: v for k, v in pruned.items() if v not in (None, "", [], {})}
+    if isinstance(obj, list):
+        return [_prune(v) for v in obj]
+    return obj
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -41,8 +63,6 @@ def main(argv: list[str] | None = None) -> int:
         description="Grammar check of Prussian text (FST + CG3 pipeline).",
     )
     ap.add_argument("text", help="Prussian sentence(s) to check.")
-    ap.add_argument("--json", action="store_true",
-                    help="emit raw JSON instead of human-readable output.")
     ap.add_argument("--include-conllu", action="store_true",
                     help="include CoNLL-U dependency analysis per sentence.")
     ap.add_argument("--verbose", action="store_true",
@@ -62,37 +82,33 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, TypeError):
         parsed = None
 
-    if args.json:
-        sys.stdout.write(raw if isinstance(raw, str) else json.dumps(raw))
-        sys.stdout.write("\n")
+    if parsed and "overall" in parsed:
+        overall = parsed["overall"]
+        corrections = parsed.get("spelling_corrections", [])
+        suffix = " (with corrections)" if corrections else ""
+        print(f"overall: {overall.get('status')}{suffix} "
+              f"({overall.get('n_sentences')} sentences, "
+              f"{overall.get('n_violations')} violations)")
+        for s in parsed.get("sentences", []):
+            status = s.get("status", "")
+            text = s.get("text", "")
+            violations = s.get("violations", [])
+            line = f"  [{s.get('sent_id')}] {status}: {text}"
+            if violations:
+                for v in violations:
+                    rule = v.get("rule", "")
+                    msg = v.get("message", "")
+                    sev = v.get("severity", "")
+                    line += f"\n         {sev}: {rule} — {msg}"
+            print(line)
+        for c in corrections:
+            certain = "" if c.get("certain", True) else ", unsicher"
+            corrected = c["corrected"]
+            method = c.get("method", "?")
+            print(f"    spelling: {c['original']} → {corrected}"
+                  f" ({method}{certain})")
     else:
-        if parsed and "overall" in parsed:
-            overall = parsed["overall"]
-            corrections = parsed.get("spelling_corrections", [])
-            suffix = " (with corrections)" if corrections else ""
-            print(f"overall: {overall.get('status')}{suffix} "
-                  f"({overall.get('n_sentences')} sentences, "
-                  f"{overall.get('n_violations')} violations)")
-            for s in parsed.get("sentences", []):
-                status = s.get("status", "")
-                text = s.get("text", "")
-                violations = s.get("violations", [])
-                line = f"  [{s.get('sent_id')}] {status}: {text}"
-                if violations:
-                    for v in violations:
-                        rule = v.get("rule", "")
-                        msg = v.get("message", "")
-                        sev = v.get("severity", "")
-                        line += f"\n         {sev}: {rule} — {msg}"
-                print(line)
-            for c in corrections:
-                certain = "" if c.get("certain", True) else ", unsicher"
-                corrected = c["corrected"]
-                method = c.get("method", "?")
-                print(f"    spelling: {c['original']} → {corrected}"
-                      f" ({method}{certain})")
-        else:
-            print(raw)
+        print(raw)
 
     status = (parsed or {}).get("overall", {}).get("status", "")
     return {"verified_in_coverage": 0, "out_of_coverage": 2,

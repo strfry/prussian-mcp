@@ -97,23 +97,5 @@ class TestHybridToggle(unittest.TestCase):
         engine.bm25.query.assert_called()
 
 
-class TestContextRerank(unittest.TestCase):
-    def test_context_annotates_chunks(self):
-        from prussian.tools.search import search_tool
-
-        engine = _make_engine()
-        reranker = MagicMock()
-        reranker.rerank = MagicMock(
-            return_value=[
-                {"index": 0, "relevance_score": 0.9},
-                {"index": 1, "relevance_score": 0.3},
-            ]
-        )
-        results = search_tool(engine, "Birke", top_k=3,
-                              reranker=reranker, context="Der Abendstern")
-        self.assertIn("lines", results[0])
-        self.assertIn("best_line", results[0])
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -6,17 +6,19 @@ import sys
 import traceback
 from typing import Any
 
+from prussian.tools._format import head
+
 
 def wordforms_tool(
     engine,
     lemma: str,
     features: str | None = None,
-) -> list[dict[str, Any]] | dict[str, str]:
+) -> str:
     """Get all declension or conjugation forms for a Prussian lemma.
 
     Output is a flat list of forms with their FST tags.  For verbs
     (analyses contain ``V``), the default shows only indicative present
-    forms plus a list of ``available_features``.  The ``features``
+    forms plus the available features.  The ``features``
     argument selects specific morphological categories.
 
     Args:
@@ -30,10 +32,10 @@ def wordforms_tool(
             (Ind+Pres) or full list (non-verbs).
 
     Returns:
-        List of entries ``{lemma, desc, gender, forms,
-        available_features}`` where ``available_features`` is the set of
-        FST tags occurring in the lemma's paradigm.  On unknown feature,
-        returns an error dict with ``valid_features``.
+        Compact text per entry: ``lemma (gender)  — desc``, one
+        ``form: tags`` line per form, and the ``available features`` (the
+        FST tags occurring in the paradigm).  Unknown lemma / feature →
+        an ``error:`` line (plus the valid features).
     """
     from prussian.engine.fst.tags import (
         fst_available,
@@ -44,7 +46,7 @@ def wordforms_tool(
 
     word_lower = lemma.lower().strip()
     if word_lower not in engine.word_to_entry:
-        return {"error": f"Word not found: {lemma}"}
+        return f"error: word not found: {lemma}"
 
     # Resolve feature filter
     wanted_tags: list[str] | None = None
@@ -64,10 +66,8 @@ def wordforms_tool(
                  "Sg1", "Sg2", "SP3", "Pl1", "Pl2", "P1", "P2", "P3",
                  "Comp", "Superl", "Card", "Ord", "Encl"]
             ))
-            return {
-                "error": f"Unknown feature: {features}",
-                "valid_features": valid,
-            }
+            return (f"error: unknown feature: {features}\n"
+                    f"valid features: {', '.join(valid)}")
 
     entries = engine.word_to_entry[word_lower]
     results: list[dict[str, Any]] = []
@@ -139,11 +139,30 @@ def wordforms_tool(
         if wanted_tags is not None and not forms_out:
             entry_out["note"] = (
                 f"no forms match '{features}' — combine tags from "
-                "available_features"
+                "the available features"
             )
         results.append(entry_out)
 
-    return results
+    return _format(results)
+
+
+def _format(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "no forms found."
+    out: list[str] = []
+    for entry in results:
+        desc = f"— {entry['desc']}" if entry.get("desc") else ""
+        out.append(head(entry.get("lemma", "?"), entry.get("gender", ""), desc))
+        for f in entry["forms"]:
+            tags = " | ".join(f["tags"]) or f.get("pgr", "")
+            out.append(f"  {f['form']}: {tags}" if tags else f"  {f['form']}")
+        if not entry["forms"]:
+            out.append("  (no forms)")
+        if entry.get("note"):
+            out.append(f"  note: {entry['note']}")
+        if entry["available_features"]:
+            out.append(f"  available features: {', '.join(entry['available_features'])}")
+    return "\n".join(out)
 
 
 # Canonical presentation order: POS, mood, tense, person, number, case,
@@ -188,8 +207,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("lemma", help="Prussian base form.")
     ap.add_argument("--features", default=None,
                     help="Feature filter: 'participle', 'Ind+Pres', etc.")
-    ap.add_argument("--json", action="store_true",
-                    help="emit raw JSON.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
@@ -212,48 +229,5 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
         return 1
 
-    if args.json:
-        import json
-        sys.stdout.write(json.dumps(results, ensure_ascii=False, indent=2)
-                         + "\n")
-    else:
-        if isinstance(results, dict) and "error" in results:
-            print(results["error"])
-            vf = results.get("valid_features", [])
-            if vf:
-                print(f"  valid features: {', '.join(vf)}")
-            return 1
-        if not results:
-            print(f"no forms found for: {args.lemma}")
-            return 1
-        for entry in results:
-            lem = entry.get("lemma", "?")
-            gender = entry.get("gender", "")
-            desc = entry.get("desc", "")
-            avail = entry.get("available_features", [])
-
-            header = lem
-            if gender:
-                header += f" [{gender}]"
-            if desc:
-                header += f"  {desc}"
-            print(header)
-
-            forms = entry.get("forms", [])
-            if not forms:
-                print("  (no forms)")
-            for f in forms:
-                tags = f.get("tags", [])
-                form = f.get("form", "")
-                pgr = f.get("pgr", "")
-                if tags:
-                    print(f"  {form}  [{' + '.join(tags)}]")
-                elif pgr:
-                    print(f"  {form}  [{pgr}]")
-                else:
-                    print(f"  {form}")
-
-            if avail:
-                print(f"  [available: {', '.join(avail)}]")
-
-    return 0
+    print(results)
+    return 1 if results.startswith("error:") else 0

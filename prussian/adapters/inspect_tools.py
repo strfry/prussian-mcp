@@ -12,9 +12,6 @@ without ``anyOf``.  Each tool delegates to the same raw callables
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 import anyio
 
 from inspect_ai.tool import tool
@@ -22,10 +19,6 @@ from inspect_ai.tool import tool
 from prussian.tools import lookup_tool, search_tool, spec, validate_tool, wordforms_tool
 from prussian.tools.runtime import get_engine as _get_engine
 from prussian.tools.runtime import get_reranker as _get_reranker
-
-
-def _dumps(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False)
 
 
 @tool
@@ -47,7 +40,7 @@ def search_dictionary():
                 context=context or None,
             )
         )
-        return _dumps(result)
+        return result
 
     execute.__doc__ = spec.docstring(spec.SEARCH)
     return execute
@@ -60,7 +53,7 @@ def lookup_prussian_word():
         result = await anyio.to_thread.run_sync(
             lambda: lookup_tool(engine, text, fuzzy=bool(fuzzy))
         )
-        return _dumps(result)
+        return result
 
     execute.__doc__ = spec.docstring(spec.LOOKUP)
     return execute
@@ -73,7 +66,7 @@ def get_word_forms():
         result = await anyio.to_thread.run_sync(
             lambda: wordforms_tool(engine, lemma, features=features or None)
         )
-        return _dumps(result)
+        return result
 
     execute.__doc__ = spec.docstring(spec.WORDFORMS)
     return execute
@@ -85,7 +78,6 @@ def validate_prussian():
         result = await anyio.to_thread.run_sync(
             lambda: validate_tool(text, include_conllu=bool(include_conllu))
         )
-        # validate_tool already returns a JSON string.
         return result
 
     execute.__doc__ = spec.docstring(spec.VALIDATE)

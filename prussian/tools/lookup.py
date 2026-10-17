@@ -6,12 +6,14 @@ import sys
 import traceback
 from typing import Any
 
+from prussian.tools._format import head, translations
+
 
 def lookup_tool(
     engine,
     text: str,
     fuzzy: bool = False,
-) -> list[dict[str, Any]]:
+) -> str:
     """Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
 
     Each token is analyzed via the FST cascade (surface → lowercase →
@@ -23,6 +25,10 @@ def lookup_tool(
         engine: ``SearchEngine`` instance.
         text: Prussian text (one or more sentences).
         fuzzy: set ``True`` for Levenshtein fallback on OOV tokens.
+
+    Returns:
+        Compact text: per token its analyses (lemma, tags, desc) with
+        translations in all six languages.
     """
     from prussian.engine.fst.tags import analyze_words, fst_available
     from prussian.engine.fst.validate import fst_api
@@ -37,7 +43,7 @@ def lookup_tool(
 
     word_tokens = [t for t in all_tokens if t and t[0].isalpha()]
     if not word_tokens:
-        return []
+        return _format([])
 
     # 2. FST analysis batch (deduplicated)
     unique_types = list(dict.fromkeys(word_tokens))
@@ -126,7 +132,41 @@ def lookup_tool(
                 "matches": matches,
             })
 
-    return results
+    return _format(results)
+
+
+def _format(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "no words found."
+    out: list[str] = []
+    for r in results:
+        form = r.get("form", "?")
+        if r.get("method") == "fst":
+            adj = r.get("adjustment")
+            via = f"  (via {adj['via']}: {adj['matched_form']})" if adj else ""
+            out.append(f"{form}{via}")
+            for a in r.get("analyses", []):
+                tags = " | ".join(a.get("tags", []))
+                out.append(f"  {head(a.get('lemma', '?'), a.get('gender', ''), tags)}"
+                           + (f"  — {a['desc']}" if a.get("desc") else ""))
+                out.extend(translations(a.get("translations", {}), "    "))
+            continue
+        matches = r.get("matches", [])
+        if not matches:
+            out.append(f"{form}  — not found (no FST analysis, no dictionary match)")
+            continue
+        out.append(f"{form}  (dictionary fallback, no FST analysis)")
+        for m in matches:
+            how = "/".join(x for x in (m.get("method"), m.get("rule_applied")) if x)
+            info = " ".join(x for x in (
+                f"form {m['form']}" if m.get("form") else "",
+                m.get("pgr", ""),
+                f"[{how}]" if how else "",
+            ) if x)
+            out.append(f"  {head(m.get('word', '?'), m.get('gender', ''), info)}"
+                       + (f"  — {m['desc']}" if m.get("desc") else ""))
+            out.extend(translations(m.get("translations", {}), "    "))
+    return "\n".join(out)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -141,8 +181,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("text", help="Prussian text (sentence or sentences).")
     ap.add_argument("--fuzzy", action="store_true",
                     help="enable Levenshtein fallback for OOV tokens.")
-    ap.add_argument("--json", action="store_true",
-                    help="emit raw JSON.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
@@ -165,64 +203,5 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
         return 1
 
-    if args.json:
-        import json
-        sys.stdout.write(json.dumps(results, ensure_ascii=False, indent=2)
-                         + "\n")
-    else:
-        if not results:
-            print("no words found.")
-            return 1
-        for r in results:
-            form = r.get("form", "?")
-            method = r.get("method", "")
-            adjustment = r.get("adjustment")
-
-            if method == "fst":
-                analyses = r.get("analyses", [])
-                parts = [f"{form}"]
-                if adjustment:
-                    via = adjustment.get("via", "")
-                    mf = adjustment.get("matched_form", "")
-                    parts.append(f"({via}: {mf})" if mf else f"({via})")
-                parts.append(f"[{method}]")
-                print(" ".join(parts))
-                for a in analyses:
-                    lemma = a.get("lemma", "?")
-                    tags_str = " | ".join(a.get("tags", []))
-                    trans = a.get("translations", {})
-                    trans_str = ", ".join(
-                        f"{lang}: {t}" for lang, t in trans.items()
-                    ) if isinstance(trans, dict) else str(trans)
-                    desc = a.get("desc", "")
-                    line = f"  {lemma} [{tags_str}]"
-                    if trans_str:
-                        line += f" — {trans_str}"
-                    if desc:
-                        line += f"  {desc}"
-                    print(line)
-            elif method == "dictionary_fallback":
-                matches = r.get("matches", [])
-                if matches:
-                    parts = [f"{form}"]
-                    parts.append("[dictionary_fallback]")
-                    print(" ".join(parts))
-                    for m in matches:
-                        word = m.get("word", "?")
-                        trans = m.get("translations", {})
-                        trans_str = ", ".join(
-                            f"{lang}: {t}" for lang, t in trans.items()
-                        ) if isinstance(trans, dict) else str(trans)
-                        m_method = m.get("method", "")
-                        rule = m.get("rule_applied", "")
-                        line = f"  {word} — {trans_str}"
-                        if m_method:
-                            line += f"  ({m_method}"
-                            if rule:
-                                line += f"/{rule}"
-                            line += ")"
-                        print(line)
-                else:
-                    print(f"{form} [not found]")
-
+    print(results)
     return 0

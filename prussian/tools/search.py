@@ -6,6 +6,8 @@ import sys
 import traceback
 from typing import Any
 
+from prussian.tools._format import head, translations
+
 
 def search_tool(
     engine,
@@ -14,7 +16,7 @@ def search_tool(
     filter_tags: str | None = None,
     reranker=None,
     context: str | None = None,
-) -> list[dict[str, Any]]:
+) -> str:
     """Semantic search in the Prussian dictionary.
 
     Returns co-embedded lemma-cluster chunks; use it to find the Prussian
@@ -27,16 +29,15 @@ def search_tool(
             Russian).
         top_k: number of chunks to return.
         filter_tags: optional FST tag filter, e.g. ``"Acc+Sg"``.  When set,
-            each chunk gets a ``filtered_entries`` list (per-member forms
-            matching the tags).
+            each entry lists its forms matching the tags.
         reranker: cross-encoder reranker (from ``build_reranker()``).  Used
             only when ``context`` is set.
-        context: optional usage context; each of the top ``CHUNK_RERANK_TOPN``
-            chunks is annotated with ``best_line`` / ``lines``.
+        context: optional usage context; within each of the top
+            ``CHUNK_RERANK_TOPN`` chunks the best-matching entry is marked.
 
     Returns:
-        List of chunks ``{lemma, members, pos, score, text, entries,
-        best_line?, lines?, filtered_entries?}``.
+        Compact text: one numbered block per chunk, each entry as
+        ``lemma (gender)`` plus its translations in all six languages.
     """
     results = engine.query(query, top_k)
 
@@ -64,16 +65,49 @@ def search_tool(
                                     **entry_dict,
                                     "forms": [
                                         {"form": f["form"],
-                                         "tags": ("+".join(f["tags"]) if f["tags"]
+                                         "tags": (" | ".join(f["tags"]) if f["tags"]
                                                   else f.get("pgr", ""))}
                                         for f in matched
                                     ],
-                                    "gender": _infer_gender(engine, word),
                                 })
                             break
                 chunk["filtered_entries"] = filtered_entries
 
-    return results
+    for chunk in results:
+        for e in chunk.get("entries", []):
+            e.setdefault("gender", _infer_gender(engine, e.get("word", "")))
+    return _format(results)
+
+
+def _format(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "no results."
+    out: list[str] = []
+    for i, chunk in enumerate(results, 1):
+        entries = chunk.get("entries", [])
+        best = (chunk.get("best_line") or "").split(":", 1)[0].strip()
+        filtered = {fe.get("word"): fe.get("forms", [])
+                    for fe in chunk.get("filtered_entries", [])}
+
+        if len(entries) == 1:
+            prefix, indent = f"{i}. ", "  "
+        else:
+            pos = chunk.get("pos")
+            out.append(f"{i}. cluster{f' ({pos})' if pos else ''}:")
+            prefix, indent = "  - ", "    "
+
+        for e in entries:
+            word = e.get("word", "")
+            mark = "  ← best for context" if best and word == best else ""
+            out.append(f"{prefix}{head(word, e.get('gender', ''))}{mark}")
+            out.extend(translations(e.get("translations", {}), indent))
+            for f in filtered.get(word, []):
+                out.append(f"{indent}= {f['form']}  {f['tags']}")
+        if best and best not in {e.get("word") for e in entries}:
+            out.append(f"  context match: {chunk['best_line']}")
+        if "filtered_entries" in chunk and not filtered:
+            out.append("  (no forms match filter_tags)")
+    return "\n".join(out)
 
 
 def _infer_gender(engine, word: str) -> str:
@@ -102,8 +136,6 @@ def main(argv: list[str] | None = None) -> int:
                     help="usage context for reranking (enables reranker when set).")
     ap.add_argument("--filter-tags", default=None,
                     help="FST tag filter, e.g. 'Acc+Sg', 'PrfPrc+Pss', 'Opt'.")
-    ap.add_argument("--json", action="store_true",
-                    help="emit raw JSON.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
@@ -141,50 +173,5 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
         return 1
 
-    if args.json:
-        import json
-        sys.stdout.write(json.dumps(output, ensure_ascii=False, indent=2)
-                         + "\n")
-    else:
-        if not output:
-            print("no results.")
-        for i, e in enumerate(output, 1):
-            _print_chunk(i, e, context=args.context)
-
+    print(output)
     return 0
-
-
-def _print_chunk(i: int, chunk: dict, *, context: str | None = None) -> None:
-    """Render a single chunk result."""
-    lemma = chunk.get("lemma", "")
-    pos = chunk.get("pos", "")
-    score = chunk.get("score", 0)
-    members = chunk.get("members", [])
-    header = f"  {i}. {lemma}"
-    if pos:
-        header += f" ({pos})"
-    header += f"  [{score:.3f}]"
-    if members:
-        header += f"  members: {', '.join(members)}"
-    print(header)
-    lines = chunk.get("lines")
-    if lines:
-        best = chunk.get("best_line", "")
-        for ln in sorted(lines, key=lambda x: x["rank"]):
-            marker = " →" if ln["text"] == best else ""
-            print(f"     [{ln['rank']}] {ln['text']}{marker}")
-    entries = chunk.get("entries", [])
-    if entries:
-        for ed in entries[:3]:
-            trans = ed.get("translations", {})
-            trans_str = ", ".join(
-                f"{lang}: {t}" for lang, t in trans.items()
-            ) if isinstance(trans, dict) else str(trans)
-            print(f"     entry: {ed['word']} — {trans_str}")
-    fe = chunk.get("filtered_entries", [])
-    if fe:
-        for fed in fe[:5]:
-            forms_str = "; ".join(
-                f"{f['tags']}: {f['form']}" for f in fed.get("forms", [])
-            )
-            print(f"     filtered: {fed['word']} — {forms_str}")

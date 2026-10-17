@@ -15,7 +15,6 @@ Run it::
 import argparse
 import os
 import re
-from typing import Any
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
@@ -80,7 +79,7 @@ def search_dictionary(
     top_k: int = 10,
     filter_tags: str | None = None,
     context: str = "",
-) -> list[dict[str, Any]]:
+) -> str:
     return search_tool(
         get_engine(),
         query,
@@ -91,11 +90,11 @@ def search_dictionary(
     )
 
 
-def lookup_prussian_word(text: str, fuzzy: bool = False) -> list[dict[str, Any]]:
+def lookup_prussian_word(text: str, fuzzy: bool = False) -> str:
     return lookup_tool(get_engine(), text, fuzzy=fuzzy)
 
 
-def get_word_forms(lemma: str, features: str | None = None) -> list[dict[str, Any]]:
+def get_word_forms(lemma: str, features: str | None = None) -> str:
     return wordforms_tool(get_engine(), lemma, features=features)
 
 
@@ -105,7 +104,9 @@ def validate_prussian(text: str, include_conllu: bool = False) -> str:
 
 # Attach the canonical docstring, then register with FastMCP.  ``mcp.tool()``
 # reads ``__doc__`` for the tool description and the ``Args:`` block for the
-# per-parameter schema, so the docstring must be set first.
+# per-parameter schema, so the docstring must be set first.  The tools return
+# compact text; ``structured_output=False`` stops FastMCP from sending it a
+# second time as ``structuredContent``.
 for _fn, _spec in (
     (search_dictionary, spec.SEARCH),
     (lookup_prussian_word, spec.LOOKUP),
@@ -113,7 +114,7 @@ for _fn, _spec in (
     (validate_prussian, spec.VALIDATE),
 ):
     _fn.__doc__ = spec.docstring(_spec)
-    mcp.tool()(_fn)
+    mcp.tool(structured_output=False)(_fn)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

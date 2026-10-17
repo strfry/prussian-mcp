@@ -18,7 +18,6 @@ embedding / LLM env vars at import time.
 
 from __future__ import annotations
 
-from typing import Any
 
 from smolagents import tool
 
@@ -61,7 +60,7 @@ def build_local_toolset(engine=None) -> list:
         top_k: int = 10,
         filter_tags: str | None = None,
         context: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> str:
         """Semantic search in the Prussian dictionary (description from spec).
 
         Args:
@@ -80,7 +79,7 @@ def build_local_toolset(engine=None) -> list:
     def lookup_prussian_word(
         text: str,
         fuzzy: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> str:
         """Analyze a Prussian sentence via the FST cascade (description from spec).
 
         Args:
@@ -90,7 +89,7 @@ def build_local_toolset(engine=None) -> list:
         return lookup_tool(engine, text, fuzzy=fuzzy)
 
     @tool
-    def get_word_forms(lemma: str, features: str | None = None) -> list[dict[str, Any]]:
+    def get_word_forms(lemma: str, features: str | None = None) -> str:
         """Inflect a Prussian lemma into its forms (description from spec).
 
         Args:
