@@ -80,7 +80,7 @@ SEARCH = ToolSpec(
         ),
         "top_k": "number of results to return.",
         "filter_tags": (
-            "optional FST tag filter, e.g. \"Akk+Sg\", \"Part+Pass\", \"Opt\". "
+            "optional FST tag filter, e.g. \"Acc+Sg\", \"PrfPrc+Pss\", \"Opt\". "
             "When set, each entry's forms are filtered to those matching the "
             "tags."
         ),
@@ -126,7 +126,7 @@ WORDFORMS = ToolSpec(
         "features": (
             "optional comma-separated feature filter.  Accepts human-readable "
             "names (participle, conjunctive, optative, present, preterite, "
-            "infinitive, adverb) or raw FST tags (Part+Pass, Gen+Pl, "
+            "infinitive, adverb) or raw FST tags (PrfPrc+Pss, Gen+Pl, "
             "Ind+Pres+P1, Ind+Pres+P3)."
         ),
     },

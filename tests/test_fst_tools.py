@@ -68,19 +68,19 @@ class TestResolveFeatures(unittest.TestCase):
 
     def test_human_readable(self):
         result = resolve_features("participle")
-        self.assertEqual(result, ["Part"])
+        self.assertEqual(result, ["PrfPrc"])
 
     def test_multiple_human_readable(self):
         result = resolve_features("indicative,present")
-        self.assertEqual(result, ["Ind", "Pres"])
+        self.assertEqual(result, ["Ind", "Prs"])
 
     def test_raw_fst_tag(self):
-        result = resolve_features("Ind+Pres")
-        self.assertEqual(result, ["Ind", "Pres"])
+        result = resolve_features("Ind+Prs")
+        self.assertEqual(result, ["Ind", "Prs"])
 
     def test_mixed(self):
         result = resolve_features("participle,Gen+Pl")
-        self.assertEqual(result, ["Part", "Gen", "Pl"])
+        self.assertEqual(result, ["PrfPrc", "Gen", "Pl"])
 
     def test_empty(self):
         result = resolve_features("")
@@ -96,7 +96,7 @@ class TestResolveFeatures(unittest.TestCase):
 
     def test_case_insensitive_name(self):
         result = resolve_features("Participle")
-        self.assertEqual(result, ["Part"])
+        self.assertEqual(result, ["PrfPrc"])
 
     def test_conjunctive_maps_to_subj(self):
         result = resolve_features("conjunctive")
@@ -104,7 +104,7 @@ class TestResolveFeatures(unittest.TestCase):
 
     def test_past_maps_to_pret(self):
         result = resolve_features("past")
-        self.assertEqual(result, ["Pret"])
+        self.assertEqual(result, ["Prt"])
 
 
 class TestWordformsTool(unittest.TestCase):
@@ -206,11 +206,11 @@ class TestWordformsFST(unittest.TestCase):
             tags = form.get("tags", [])
             if tags:
                 has_ind_pres = any(
-                    "ind" in t.lower() and "pres" in t.lower()
+                    "ind" in t.lower() and "prs" in t.lower()
                     for t in tags
                 )
                 self.assertTrue(has_ind_pres,
-                                f"Expected Ind+Pres, got {tags}")
+                                f"Expected Ind+Prs, got {tags}")
 
     def test_participle_feature(self):
         from prussian.tools.wordforms import wordforms_tool
@@ -221,9 +221,9 @@ class TestWordformsFST(unittest.TestCase):
         for form in entry.get("forms", []):
             tags = form.get("tags", [])
             if tags:
-                has_part = any("part" in t.lower() for t in tags)
+                has_part = any(("prsprc" in t.lower() or "prfprc" in t.lower()) for t in tags)
                 self.assertTrue(has_part,
-                                f"Expected Part, got {tags}")
+                                f"Expected PrsPrc/PrfPrc, got {tags}")
 
     def test_noun_full_list(self):
         from prussian.tools.wordforms import wordforms_tool
@@ -299,7 +299,7 @@ class TestSearchFST(unittest.TestCase):
         from prussian.tools.search import search_tool
         engine = self._make_engine()
         results = search_tool(engine, "Birke", top_k=5,
-                              filter_tags="Akk+Sg")
+                              filter_tags="Acc+Sg")
         self.assertIsInstance(results, list)
         # Should find berzi with accusative singular forms
         for r in results:
@@ -307,8 +307,8 @@ class TestSearchFST(unittest.TestCase):
                 for f in r["forms"]:
                     tags = f.get("tags", "")
                     self.assertTrue(
-                        "akk" in tags.lower() or "sg" in tags.lower(),
-                        f"Expected Akk+Sg in tags, got {tags}"
+                        "acc" in tags.lower() or "sg" in tags.lower(),
+                        f"Expected Acc+Sg in tags, got {tags}"
                     )
 
     def test_search_without_filter(self):

@@ -25,7 +25,7 @@ def wordforms_tool(
         features: optional comma-separated feature filter.  Accepts
             human-readable names (``participle``, ``conjunctive``,
             ``optative``, ``imperative``, ``present``, ``preterite``,
-            ``infinitive``) or raw FST tags (``Part+Pass``, ``Ind``,
+            ``infinitive``) or raw FST tags (``PrfPrc+Pss``, ``Ind``,
             ``Gen+Pl``, ``Ind+Pres+P3``).  Omit for the verb default
             (Ind+Pres) or full list (non-verbs).
 
@@ -50,18 +50,19 @@ def wordforms_tool(
     wanted_tags: list[str] | None = None
     if features:
         wanted_tags = resolve_features(features)
-        if wanted_tags is not None and "P3" in wanted_tags:
+        if wanted_tags is not None and ("P3" in wanted_tags
+                                        or "SP3" in wanted_tags):
             # Finite 3rd-person forms carry no number tag (ast = is/are),
-            # so a P3 request must not also require Sg/Pl.
+            # so a P3/SP3 request must not also require Sg/Pl.
             wanted_tags = [t for t in wanted_tags if t not in ("Sg", "Pl")]
         if wanted_tags is None:
             valid = sorted(set(
                 list(_FEATURE_NAME_MAP.keys()) +
-                ["Part", "Ind", "Opt", "Subj", "Imp", "Rel",
-                 "Pres", "Pret", "Inf", "Pass", "Refl", "Adv",
-                 "Nom", "Gen", "Dat", "Akk",
-                 "Sg", "Pl", "Masc", "Fem", "Neut",
-                 "P1", "P2", "P3"]
+                ["PrsPrc", "PrfPrc", "Act", "Pss", "Refl",
+                 "Ind", "Opt", "Subj", "Imprt", "Rel", "Prs", "Prt", "Inf", "Adv",
+                 "Nom", "Gen", "Dat", "Acc", "Msc", "Fem", "Neu",
+                 "Sg1", "Sg2", "SP3", "Pl1", "Pl2", "P1", "P2", "P3",
+                 "Comp", "Superl", "Card", "Ord", "Encl"]
             ))
             return {
                 "error": f"Unknown feature: {features}",
@@ -97,13 +98,13 @@ def wordforms_tool(
                 if match_tags(f.get("tags", []), " ".join(wanted_tags))
             ]
         elif is_verb and not features:
-            # Verb default: Ind+Pres only
+            # Verb default: Ind+Prs only
             filtered = [
                 f for f in fw
                 if any(
                     all(
                         p.lower() in {t.lower() for t in tag.split("+")}
-                        for p in ["Ind", "Pres"]
+                        for p in ["Ind", "Prs"]
                     )
                     for tag in f.get("tags", [])
                 )
@@ -148,27 +149,29 @@ def wordforms_tool(
 # Canonical presentation order: POS, mood, tense, person, number, case,
 # gender, degree/misc.
 _TAG_ORDER = [
-    "N", "V", "Adj", "Adv", "Pron", "Num", "Part", "Prp", "Psp",
-    "Cnj", "SCnj", "Pcl", "IJ", "PropN",
-    "Ind", "Opt", "Subj", "Imp", "Rel", "Pres", "Pret", "Inf",
-    "Pass", "Refl",
-    "P1", "P2", "P3", "Sg", "Pl",
-    "Nom", "Gen", "Dat", "Akk",
-    "Masc", "Fem", "Neut",
-    "Cmp", "Sup", "Card", "Ord", "Encl",
-    "GovAkk", "GovDat", "GovGen",
+    "N", "A", "V", "Adv", "Pron", "Num", "Pr", "Adp", "Po",
+    "CC", "CS", "Pcle", "Interj", "Prop",
+    "Ind", "Opt", "Subj", "Imprt", "Rel", "Prs", "Prt", "Inf",
+    "Pss", "Act", "Refl", "PrsPrc", "PrfPrc",
+    "Sg1", "Sg2", "SP3", "Pl1", "Pl2", "P1", "P2", "P3", "Sg", "Pl",
+    "Nom", "Gen", "Dat", "Acc",
+    "Msc", "Fem", "Neu",
+    "Comp", "Superl", "Card", "Ord", "Encl",
 ]
 
 
 _FEATURE_NAME_MAP = {
-    "participle": "Part",
+    "participle": "PrfPrc",
+    "present_participle": "PrsPrc",
     "indicative": "Ind",
     "optative": "Opt",
     "subjunctive": "Subj",
-    "imperative": "Imp",
-    "present": "Pres",
-    "preterite": "Pret",
+    "imperative": "Imprt",
+    "present": "Prs",
+    "preterite": "Prt",
     "infinitive": "Inf",
+    "passive": "Pss",
+    "active": "Act",
     "adverb": "Adv",
 }
 

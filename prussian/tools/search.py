@@ -26,7 +26,7 @@ def search_tool(
         query: search query (German, English, Lithuanian, Latvian, Polish,
             Russian).
         top_k: number of chunks to return.
-        filter_tags: optional FST tag filter, e.g. ``"Akk+Sg"``.  When set,
+        filter_tags: optional FST tag filter, e.g. ``"Acc+Sg"``.  When set,
             each chunk gets a ``filtered_entries`` list (per-member forms
             matching the tags).
         reranker: cross-encoder reranker (from ``build_reranker()``).  Used
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--context", default=None,
                     help="usage context for reranking (enables reranker when set).")
     ap.add_argument("--filter-tags", default=None,
-                    help="FST tag filter, e.g. 'Akk+Sg', 'Part+Pass', 'Opt'.")
+                    help="FST tag filter, e.g. 'Acc+Sg', 'PrfPrc+Pss', 'Opt'.")
     ap.add_argument("--json", action="store_true",
                     help="emit raw JSON.")
     ap.add_argument("--verbose", action="store_true",
