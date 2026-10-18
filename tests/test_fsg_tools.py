@@ -38,7 +38,7 @@ class TestValidatePrussian(unittest.TestCase):
         statuses = [s["status"] for s in r["sentences"]]
         self.assertIn("violations_found", statuses)
         v = r["sentences"][0]["violations"][0]
-        self.assertEqual(v["rule"], "prep-akk-dat")
+        self.assertEqual(v["rule"], "adp-case")
         self.assertEqual(v["severity"], "error")
 
     def test_out_of_coverage_is_not_verified(self):
