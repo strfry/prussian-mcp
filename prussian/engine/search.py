@@ -152,8 +152,7 @@ class SearchEngine:
         """Normalized match keys for a translation or query string → tier.
 
         Lowercased and split on ``,``/``;``.  Tier 0 is the part as written;
-        tier 1 drops parentheticals (``to sink (go down)`` → ``to sink``) and
-        an English ``to `` infinitive marker (``to go`` ≡ ``go``).
+        tier 1 drops parentheticals (``to sink (go down)`` → ``to sink``).
         """
         keys: Dict[str, int] = {}
 
@@ -164,18 +163,14 @@ class SearchEngine:
 
         for part in re.split(r"[,;]", text.lower()):
             add(part, 0)
-            bare = re.sub(r"\([^)]*\)", " ", part)
-            add(bare, 1)
-            bare = " ".join(bare.split())
-            if bare.startswith("to ") and len(bare) > 3:
-                add(bare[3:], 1)
+            add(re.sub(r"\([^)]*\)", " ", part), 1)
         return keys
 
     def _exact_lemmas(self, query: str) -> List[str]:
         """Lemmas with a translation literally equal to ``query``, best first.
 
         Tier sums rank a match on the full translation text above one that
-        only matches after dropping parentheticals or ``to ``.
+        only matches after dropping parentheticals.
         """
         best: Dict[str, int] = {}
         for key, q_tier in self._translation_keys(query).items():

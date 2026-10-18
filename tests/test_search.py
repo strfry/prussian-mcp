@@ -135,7 +135,7 @@ class TestExactMatch(unittest.TestCase):
         from prussian.engine.search import SearchEngine
         keys = SearchEngine._translation_keys("to sink (go down); Senke")
         self.assertEqual(keys, {"to sink (go down)": 0, "to sink": 1,
-                                "sink": 1, "senke": 0})
+                                "senke": 0})
 
 
 if __name__ == "__main__":
