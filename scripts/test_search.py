@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Integration test for Prussian MCP features — back-to-back pipeline check.
 
-Tests all three MCP tools end-to-end:
+Tests two MCP tools end-to-end:
   1. search_dictionary  — semantic search (triggers embedding API)
   2. lookup_prussian_word — reverse lookup (all form categories)
-  3. get_word_forms        — structured forms + PGR filtering
 
 Also tests optional reranker backend if API_BASE_URL is configured.
 
@@ -209,49 +208,6 @@ def test_lookup(engine, word, expected_lemma, expected_pgr, label):
     return elapsed, f"→ {match['word']} ({pgr})"
 
 
-# ── get_word_forms tests ────────────────────────────────────────────────────
-
-REQUIRED_CATEGORIES = {
-    "indicative",
-    "subjunctive",
-    "optative",
-    "imperative",
-    "participles",
-    "declension",
-}
-
-
-def test_get_word_forms_categories(engine):
-    """get_word_forms must return all expected categories."""
-    t0 = time.time()
-    data = engine.get_word_forms("būtwei")
-    elapsed = time.time() - t0
-    if not data:
-        raise ValueError("būtwei not found")
-    entry = data[0]
-    forms = entry.get("forms", {})
-    categories = set(forms.keys())
-    missing = REQUIRED_CATEGORIES - categories
-    if missing:
-        raise ValueError(f"Missing categories: {missing}")
-    return elapsed, f"{len(categories)} categories: {sorted(categories)}"
-
-
-def test_get_word_forms_filter(engine):
-    """get_word_forms with filter must return only matching forms."""
-    t0 = time.time()
-    data = engine.get_word_forms("būtwei", filter_pgr="SUBJ")
-    elapsed = time.time() - t0
-    entry = data[0]
-    filtered = entry.get("filtered_forms", [])
-    if not filtered:
-        raise ValueError("SUBJ filter returned no forms")
-    for ff in filtered:
-        if "SUBJ" not in ff["pgr"]:
-            raise ValueError(f"Filter mismatch: {ff['pgr']} does not contain SUBJ")
-    return elapsed, f"{len(filtered)} subjunctive forms"
-
-
 # ── Main ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -365,24 +321,6 @@ def main():
     else:
         for word, lemma, pgr, label in LOOKUP_TESTS:
             record(SKIP, f'lookup "{word}"', 0, "no engine")
-
-    # ── Phase 6: get_word_forms ────────────────────────────────────────────
-    print(f"\n{BOLD}── get_word_forms{'' if engine else ' [SKIPPED]'} ──{RESET}")
-
-    if engine:
-        try:
-            elapsed, detail = test_get_word_forms_categories(engine)
-            record(PASS, "get_word_forms categories", elapsed, detail)
-        except Exception as e:
-            record(FAIL, "get_word_forms categories", 0, str(e))
-
-        try:
-            elapsed, detail = test_get_word_forms_filter(engine)
-            record(PASS, "get_word_forms + filter SUBJ", elapsed, detail)
-        except Exception as e:
-            record(FAIL, "get_word_forms + filter SUBJ", 0, str(e))
-    else:
-        record(SKIP, "get_word_forms", 0, "no engine")
 
     # ── Summary ────────────────────────────────────────────────────────────
     print(f"\n{BOLD}=== Summary ==={RESET}")

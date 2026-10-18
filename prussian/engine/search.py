@@ -8,8 +8,15 @@ from typing import List, Dict, Any, Optional
 
 from prussian.config import EMBEDDINGS_PATH, QUERY_PREFIX, HYBRID_SEARCH, DICTIONARY_PATH
 
-from prussian_embeddings import get_embedder, EmbeddingStore, BM25Index, hybrid_query
-from prussian.engine.morphology import extract_pgr_from_entry, match_pgr, parse_pgr, build_pgr, _parse_pronoun
+from prussian_embeddings import (
+    get_embedder,
+    EmbeddingStore,
+    BM25Index,
+    hybrid_query,
+    prefix_tokens,
+    ngram_tokens,
+)
+from prussian.engine.morphology import extract_pgr_from_entry, parse_pgr, build_pgr
 
 
 class SearchEngine:
@@ -55,6 +62,11 @@ class SearchEngine:
         print(f"Loading embeddings ({EMBEDDINGS_PATH.name})...", file=sys.stderr)
         self.store = EmbeddingStore.load(str(EMBEDDINGS_PATH))
 
+        # Der Query-Prefix reist mit dem Store (Meta); QUERY_PREFIX aus der
+        # Env greift nur für Stores ohne Meta-Eintrag.  Ein LEERER Meta-Wert
+        # ist gültig (z. B. Voyage: Asymmetrie via input_type-Parameter).
+        self.query_prefix = self.store.meta.get("query_prefix", QUERY_PREFIX)
+
         # The retrieval store must be a chunk store: records carry text + members.
         recs = self.store.records
         if recs and not ("text" in recs[0] and "members" in recs[0]):
@@ -63,7 +75,18 @@ class SearchEngine:
                 "(records lack 'text'/'members'). Build one with "
                 "`prussian-embeddings-build-chunks`."
             )
-        self.bm25 = BM25Index([r["text"] for r in recs]) if HYBRID_SEARCH else None
+        # Three lexical channels over the same chunk texts, fused with the
+        # dense one in `query()`.  Exact tokens are the precise channel;
+        # prefix-truncated tokens and character n-grams cover the inflected
+        # queries an agent actually types ("ženklai" for "ženklas"), which
+        # exact BM25 misses entirely and the dense channel only half-catches.
+        chunk_texts = [r["text"] for r in recs]
+        if HYBRID_SEARCH:
+            self.bm25 = BM25Index(chunk_texts)
+            self.bm25_prefix = BM25Index(chunk_texts, tokenizer=prefix_tokens)
+            self.bm25_ngram = BM25Index(chunk_texts, tokenizer=ngram_tokens)
+        else:
+            self.bm25 = self.bm25_prefix = self.bm25_ngram = None
 
         # Word/form indices + translation enrichment come from the dictionary
         # (the canonical source), not a second embedding store.
@@ -315,10 +338,12 @@ class SearchEngine:
 
         if self.bm25 is not None:
             hits = hybrid_query(self.store, self.embedder, self.bm25, query,
-                                k=top_k, query_prefix=QUERY_PREFIX)
+                                k=top_k, query_prefix=self.query_prefix,
+                                bm25_prefix=getattr(self, "bm25_prefix", None),
+                                bm25_ngram=getattr(self, "bm25_ngram", None))
         else:
             hits = self.store.query(self.embedder, query,
-                                    k=top_k, query_prefix=QUERY_PREFIX)
+                                    k=top_k, query_prefix=self.query_prefix)
         hits = ([(r, 1.0) for r in pinned_recs]
                 + [(r, s) for r, s in hits if id(r) not in pinned_ids])[:top_k]
 
@@ -340,123 +365,6 @@ class SearchEngine:
                 "entries": entries,
             })
         return results
-
-    def get_word_forms(self, lemma: str, filter_pgr: str = None) -> Dict[str, Any]:
-        """
-        Get all declension or conjugation forms for a Prussian lemma.
-
-        Args:
-            lemma: Prussian lemma (base form)
-            filter_pgr: Optional PGR filter, e.g. "GEN.PL" or "PRS.1.SG"
-
-        Returns:
-            Dictionary with lemma, translations, and structured forms by category
-        """
-        word_lower = lemma.lower().strip()
-        if word_lower not in self.word_to_entry:
-            return {"error": f"Word not found: {lemma}"}
-
-        entries = self.word_to_entry[word_lower]
-        results = []
-        for entry in entries:
-            translations = entry.get("translations", {})
-            raw_forms = entry.get("forms", {})
-
-            all_forms_pgr = extract_pgr_from_entry(entry)
-
-            filtered_forms = []
-            for form, pgr in all_forms_pgr:
-                if filter_pgr and not match_pgr(pgr, filter_pgr):
-                    continue
-                filtered_forms.append({"form": form, "pgr": pgr})
-
-            categorized_forms = self._structure_forms(raw_forms, entry)
-
-            # Determine which categories actually have data
-            available_categories = [
-                cat for cat, items in categorized_forms.items() if items
-            ]
-
-            result = {
-                "lemma": entry.get("word", ""),
-                "translations": translations,
-                "gender": entry.get("gender", ""),
-                "forms": categorized_forms,
-                "available_categories": available_categories,
-                "desc": entry.get("desc", ""),
-            }
-            if filter_pgr:
-                result["filtered_forms"] = filtered_forms
-
-            results.append(result)
-
-        return results
-
-    def _structure_forms(self, raw_forms: Dict, entry: Dict) -> Dict[str, Any]:
-        """Convert raw forms into a structured dict with named categories."""
-        structured = {}
-
-        if raw_forms.get("indicative"):
-            indicative = []
-            for mood_data in raw_forms["indicative"]:
-                tense = mood_data.get("tense", "")
-                for fi in mood_data.get("forms", []):
-                    pronoun = fi.get("pronoun", "")
-                    form_text = fi.get("form", "")
-                    person, number = _parse_pronoun(pronoun)
-                    indicative.append({
-                        "tense": tense,
-                        "person": person,
-                        "number": number,
-                        "pronoun": pronoun,
-                        "form": form_text,
-                    })
-            structured["indicative"] = indicative
-
-        if raw_forms.get("optative"):
-            structured["optative"] = raw_forms["optative"]
-
-        if raw_forms.get("subjunctive"):
-            subj = []
-            for fi in raw_forms["subjunctive"]:
-                pronoun = fi.get("pronoun", "")
-                form_text = fi.get("form", "")
-                person, number = _parse_pronoun(pronoun)
-                subj.append({
-                    "person": person,
-                    "number": number,
-                    "pronoun": pronoun,
-                    "form": form_text,
-                })
-            structured["subjunctive"] = subj
-
-        if raw_forms.get("imperative"):
-            imp = []
-            for fi in raw_forms["imperative"]:
-                pronoun = fi.get("pronoun", "")
-                form_text = fi.get("form", "")
-                person, number = _parse_pronoun(pronoun)
-                imp.append({
-                    "person": person,
-                    "number": number,
-                    "pronoun": pronoun,
-                    "form": form_text,
-                })
-            structured["imperative"] = imp
-
-        if raw_forms.get("participles"):
-            structured["participles"] = raw_forms["participles"]
-
-        if raw_forms.get("declension"):
-            structured["declension"] = raw_forms["declension"]
-
-        if raw_forms.get("adverb"):
-            structured["adverb"] = raw_forms["adverb"]
-
-        if raw_forms.get("comparison"):
-            structured["comparison"] = raw_forms["comparison"]
-
-        return structured
 
     def lookup(self, prussian_word: str, fuzzy: bool = False, apply_rules: bool = True) -> List[Dict[str, Any]]:
         """

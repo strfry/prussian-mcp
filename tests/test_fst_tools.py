@@ -107,6 +107,52 @@ class TestResolveFeatures(unittest.TestCase):
         self.assertEqual(result, ["Prt"])
 
 
+class TestParadigmCells(unittest.TestCase):
+    """Cell enumeration from the lemma's own readings (pure logic)."""
+
+    def setUp(self):
+        from prussian.engine.fst.paradigm_order import paradigm_cells
+        self.cells = paradigm_cells
+
+    def test_noun_keeps_own_gender(self):
+        cells = self.cells([("N", "Fem", "Sg", "Nom")])
+        self.assertEqual(len(cells), 8)
+        self.assertIn("N+Fem+Pl+Acc", cells)
+        self.assertNotIn("N+Msc+Sg+Nom", cells)
+
+    def test_adjective_all_genders_degrees_adverb(self):
+        cells = self.cells([("A", "Msc", "Sg", "Nom")])
+        self.assertIn("A+Fem+Pl+Dat", cells)
+        self.assertIn("A+Superl+Neu+Sg+Gen", cells)
+        self.assertIn("Adv+Comp", cells)
+        self.assertEqual(len(cells), 3 * 24 + 3)
+
+    def test_verb_cells_and_reflexive(self):
+        cells = self.cells([("V", "Inf", "Refl"), ("V", "Inf")])
+        self.assertEqual(cells[0], "V+Inf")
+        self.assertIn("V+Ind+Prs+SP3", cells)
+        self.assertIn("V+PrfPrc+Act+Msc+Sg+Nom", cells)
+        self.assertIn("V+Ind+Prs+SP3+Refl", cells)
+
+    def test_invariable_and_pronoun(self):
+        self.assertEqual(self.cells([("Pr",)]), ["Pr"])
+        self.assertEqual(self.cells([("Pron", "Sg", "Nom", "Msc")]), [])
+
+
+@unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
+class TestGenerateParadigm(unittest.TestCase):
+    def test_noun_and_verb_forms(self):
+        from prussian.engine.fst.tags import generate_paradigm
+        forms = {(f["form"], f["tags"][0]) for f in generate_paradigm({"word": "berzi"})}
+        self.assertIn(("berzin", "N+Fem+Sg+Acc"), forms)
+        forms = {(f["form"], f["tags"][0]) for f in generate_paradigm({"word": "būtwei"})}
+        self.assertIn(("ast", "V+Ind+Prs+SP3"), forms)
+
+    def test_unknown_lemma_yields_nothing(self):
+        from prussian.engine.fst.tags import generate_paradigm
+        self.assertEqual(generate_paradigm({"word": "xyzzy"}), [])
+
+
 @unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
 class TestValidateBattery(unittest.TestCase):
     """Regressionsbatterie (Arbeitsauftrag 2026-07, 0 false verifies):

@@ -164,12 +164,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 ## Regenerating Embeddings
 
-To regenerate the E5 embeddings from the dictionary:
-
-```bash
-source venv/bin/activate
-python scripts/generate_embeddings.py
-```
+The search engine consumes precomputed chunk-embedding stores from
+`../embeddings/data/` (see `EMBEDDINGS_NAME` in `prussian/config.py`). The full
+pipeline — desc-ref linking, chunk building, embedding generation, server
+restart — is documented in [`../embeddings/README.md`](../embeddings/README.md)
+(section "Ref-clustered chunks"). After a rebuild, restart the MCP server:
+the engine loads the stores only at startup.
 
 ## Development
 

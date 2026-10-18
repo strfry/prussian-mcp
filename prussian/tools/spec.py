@@ -68,18 +68,23 @@ SEARCH = ToolSpec(
         "Use this when you have a concept or modern-language word and want to "
         "find the Prussian equivalent — the first step for every content word "
         "you translate.  Do NOT use for looking up known Prussian forms — use "
-        "lookup_prussian_word instead.\n\n"
+        "lookup_prussian_word instead.  The search is deterministic: identical "
+        "arguments always return identical results — never repeat a call with "
+        "the same query.\n\n"
         "Returns numbered results; each is a lemma (or a cluster of related "
         "lemmas) with gender and its translations (de, en, lt, lv, pl, ru).  "
         "Lemmas whose translation literally equals the query come first, "
-        "marked \"← exact match\" — so a single word or short phrase in any of the six "
-        "languages works best.  With `context` set, the best-matching lemma "
+        "marked \"← exact match\" — so a single word or short phrase in any "
+        "of the six languages works best.  With `context` set, results are "
+        "re-ordered by relevance to the context and the best-matching lemma "
         "of each top result is marked \"← best for context\"."
     ),
     args={
         "query": (
-            "search query (German, English, Lithuanian, Latvian, Polish, "
-            "Russian).  Never add \"prussian\"/\"preußisch\" — it's implicit."
+            "search query (Lithuanian, Latvian, English, German, Polish, "
+            "Russian) — Lithuanian/Latvian usually give the best hits "
+            "(closest relatives); prefer simple base concepts over opaque "
+            "compounds.  Never add \"prussian\"/\"preußisch\" — it's implicit."
         ),
         "top_k": "number of results to return.",
         "filter_tags": (
@@ -89,7 +94,8 @@ SEARCH = ToolSpec(
         ),
         "context": (
             "usage context for reranking (enables the cross-encoder when set); "
-            "marks the best-matching lemma in each top result."
+            "re-orders the results by relevance to it and marks the "
+            "best-matching lemma in each top result."
         ),
     },
 )

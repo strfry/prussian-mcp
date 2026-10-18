@@ -58,6 +58,10 @@ def _make_engine(hybrid=True):
             return_value=[(i, 0.8 - i * 0.1) for i in range(len(records))]
         )
 
+    # query() reads this (store-meta query prefix, commit 5f0e298); the real
+    # __init__ sets it from store.meta and this fixture bypasses __init__.
+    engine.query_prefix = ""
+
     engine.embedder = MagicMock()
     engine.embedder.get_embedding = MagicMock(
         return_value=np.random.randn(8).astype(np.float32)
@@ -111,6 +115,21 @@ class TestExactMatch(unittest.TestCase):
             results = engine.query(q, top_k=3)
             self.assertFalse(any(e.get("exact")
                                  for c in results for e in c["entries"]), q)
+
+    def test_exact_stays_first_after_context_rerank(self):
+        from prussian.tools.search import search_tool
+        engine = _make_engine(hybrid=False)
+        reranker = MagicMock()
+        # Reverse whatever order it is given.
+        reranker.rerank = MagicMock(side_effect=lambda q, docs, top_n=None: [
+            {"index": i, "relevance_score": 1.0 - n * 0.1}
+            for n, i in enumerate(reversed(range(len(docs))))
+        ])
+        out = search_tool(engine, "Gott", top_k=3, reranker=reranker,
+                          context="Gott im Himmel")
+        # Exact chunk first, the rest in reranked (reversed) order.
+        self.assertLess(out.index("dēiws"), out.index("wīdātun"), out)
+        self.assertLess(out.index("wīdātun"), out.index("bērzi"), out)
 
     def test_translation_keys(self):
         from prussian.engine.search import SearchEngine

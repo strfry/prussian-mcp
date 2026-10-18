@@ -39,6 +39,8 @@ _allowed_origins = [
     "http://localhost:*",
     "https://strfry.org",
     "https://strfry.org:*",
+    "https://prussian.uber.space",
+    "https://prussian.uber.space:*",
     *_extra_origins,
 ]
 _allow_any_origin = "*" in _extra_origins
@@ -49,6 +51,8 @@ _security = TransportSecuritySettings(
         "localhost:*",
         "strfry.org:*",
         "strfry.org",
+        "prussian.uber.space:*",
+        "prussian.uber.space",
         # Host header values when served on a LAN IP, e.g. "192.168.1.50:*".
         *[h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()],
     ],

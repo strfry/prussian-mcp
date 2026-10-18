@@ -28,8 +28,8 @@ def wordforms_tool(
             human-readable names (``participle``, ``conjunctive``,
             ``optative``, ``imperative``, ``present``, ``preterite``,
             ``infinitive``) or raw FST tags (``PrfPrc+Pss``, ``Ind``,
-            ``Gen+Pl``, ``Ind+Pres+P3``).  Omit for the verb default
-            (Ind+Pres) or full list (non-verbs).
+            ``Gen+Pl``, ``Ind+Prs+SP3``).  Omit for the verb default
+            (Ind+Prs) or full list (non-verbs).
 
     Returns:
         Compact text per entry: ``lemma (gender)  — desc``, one
@@ -41,7 +41,7 @@ def wordforms_tool(
         fst_available,
         resolve_features,
         match_tags,
-        forms_with_tags,
+        generate_paradigm,
     )
 
     word_lower = lemma.lower().strip()
@@ -73,7 +73,7 @@ def wordforms_tool(
     results: list[dict[str, Any]] = []
 
     for entry in entries:
-        fw = forms_with_tags(engine, entry) if fst_available() else []
+        fw = generate_paradigm(entry) if fst_available() else []
 
         # Detect POS from tag inventory
         all_tag_strs = [f["tags"] for f in fw]
@@ -114,20 +114,9 @@ def wordforms_tool(
 
         # Format output
         forms_out = [
-            {"form": f["form"], "tags": f["tags"] if f["tags"] else []}
+            {"form": f["form"], "tags": f["tags"]}
             for f in filtered
         ]
-
-        # Include non-FST forms with PGR fallback (only when no filter)
-        has_filter = wanted_tags is not None or (is_verb and not features)
-        if not has_filter:
-            for f in fw:
-                if not f["tags"] and f.get("pgr"):
-                    forms_out.append({
-                        "form": f["form"],
-                        "tags": [],
-                        "pgr": f["pgr"],
-                    })
 
         entry_out: dict[str, Any] = {
             "lemma": entry.get("word", ""),
@@ -154,7 +143,7 @@ def _format(results: list[dict[str, Any]]) -> str:
         desc = f"— {entry['desc']}" if entry.get("desc") else ""
         out.append(head(entry.get("lemma", "?"), entry.get("gender", ""), desc))
         for f in entry["forms"]:
-            tags = " | ".join(f["tags"]) or f.get("pgr", "")
+            tags = " | ".join(f["tags"])
             out.append(f"  {f['form']}: {tags}" if tags else f"  {f['form']}")
         if not entry["forms"]:
             out.append("  (no forms)")
@@ -206,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("lemma", help="Prussian base form.")
     ap.add_argument("--features", default=None,
-                    help="Feature filter: 'participle', 'Ind+Pres', etc.")
+                    help="Feature filter: 'participle', 'Ind+Prs', etc.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
