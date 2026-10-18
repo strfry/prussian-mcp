@@ -12,45 +12,37 @@ from prussian.tools._format import head, translations
 def lookup_tool(
     engine,
     text: str,
-    fuzzy: bool = False,
 ) -> str:
     """Look up a Prussian sentence: tokenize, FST-analyze, enrich from dictionary.
 
     Each token is analyzed via the FST cascade (surface → lowercase →
     titlecase → short_prep → lenient).  Analyses are grouped by lemma
-    and enriched with translations and desc from the dictionary.  Tokens
-    without FST analyses fall back to the dictionary ``engine.lookup()``.
+    and enriched with translations and desc from the dictionary.  A token
+    without FST analysis is reported as such — there is no dictionary
+    fallback, so FST coverage gaps stay visible.
 
     Args:
         engine: ``SearchEngine`` instance.
         text: Prussian text (one or more sentences).
-        fuzzy: set ``True`` for Levenshtein fallback on OOV tokens.
 
     Returns:
         Compact text: per token its analyses (lemma, tags, desc) with
         translations in all six languages.
     """
-    from prussian.engine.fst.tags import analyze_words, fst_available
-    from prussian.engine.fst.validate import fst_api
+    from prussian.engine.fst.tags import (
+        analyze_words, fst_available, fst_error_message, tokenize,
+    )
+
+    if not fst_available():
+        return f"error: FST not available: {fst_error_message()}"
 
     # 1. Tokenize, discard punctuation
-    if fst_available():
-        from prussian.engine.fst.tags import tokenize
-        all_tokens = tokenize(text)
-    else:
-        import re
-        all_tokens = re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", text)
-
-    word_tokens = [t for t in all_tokens if t and t[0].isalpha()]
+    word_tokens = [t for t in tokenize(text) if t and t[0].isalpha()]
     if not word_tokens:
         return _format([])
 
     # 2. FST analysis batch (deduplicated)
-    unique_types = list(dict.fromkeys(word_tokens))
-    if fst_available():
-        fst_results = analyze_words(unique_types)
-    else:
-        fst_results = {}
+    fst_results = analyze_words(list(dict.fromkeys(word_tokens)))
 
     # 3. Build output per token, grouping analyses by lemma
     results: list[dict[str, Any]] = []
@@ -105,32 +97,7 @@ def lookup_tool(
                 }
             results.append(entry_out)
         else:
-            # OOV fallback → dictionary lookup
-            dict_results = engine.lookup(token, fuzzy=fuzzy, apply_rules=True)
-            matches: list[dict[str, Any]] = []
-            for dr in dict_results:
-                m: dict[str, Any] = {
-                    "word": dr.get("word", ""),
-                    "translations": dr.get("translations", {}),
-                    "desc": dr.get("desc", ""),
-                    "gender": dr.get("gender", ""),
-                }
-                if dr.get("form"):
-                    m["form"] = dr["form"]
-                if dr.get("pgr"):
-                    m["pgr"] = dr["pgr"]
-                if dr.get("method"):
-                    m["method"] = dr["method"]
-                if dr.get("rule_applied"):
-                    m["rule_applied"] = dr["rule_applied"]
-                if dr.get("matched_form"):
-                    m["matched_form"] = dr["matched_form"]
-                matches.append(m)
-            results.append({
-                "form": token,
-                "method": "dictionary_fallback",
-                "matches": matches,
-            })
+            results.append({"form": token, "method": "oov"})
 
     return _format(results)
 
@@ -151,21 +118,7 @@ def _format(results: list[dict[str, Any]]) -> str:
                            + (f"  — {a['desc']}" if a.get("desc") else ""))
                 out.extend(translations(a.get("translations", {}), "    "))
             continue
-        matches = r.get("matches", [])
-        if not matches:
-            out.append(f"{form}  — not found (no FST analysis, no dictionary match)")
-            continue
-        out.append(f"{form}  (dictionary fallback, no FST analysis)")
-        for m in matches:
-            how = "/".join(x for x in (m.get("method"), m.get("rule_applied")) if x)
-            info = " ".join(x for x in (
-                f"form {m['form']}" if m.get("form") else "",
-                m.get("pgr", ""),
-                f"[{how}]" if how else "",
-            ) if x)
-            out.append(f"  {head(m.get('word', '?'), m.get('gender', ''), info)}"
-                       + (f"  — {m['desc']}" if m.get("desc") else ""))
-            out.extend(translations(m.get("translations", {}), "    "))
+        out.append(f"{form}  — not in FST (no analysis)")
     return "\n".join(out)
 
 
@@ -179,8 +132,6 @@ def main(argv: list[str] | None = None) -> int:
         description="Look up a Prussian sentence: FST analysis + dictionary.",
     )
     ap.add_argument("text", help="Prussian text (sentence or sentences).")
-    ap.add_argument("--fuzzy", action="store_true",
-                    help="enable Levenshtein fallback for OOV tokens.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
@@ -196,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        results = lookup_tool(engine, args.text, fuzzy=args.fuzzy)
+        results = lookup_tool(engine, args.text)
     except Exception as e:
         print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
         if args.verbose:

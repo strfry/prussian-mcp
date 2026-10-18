@@ -12,8 +12,7 @@ from prussian.tools._format import head, translations
 def search_tool(
     engine,
     query: str,
-    top_k: int = 10,
-    filter_tags: str | None = None,
+    top_k: int = 5,
     reranker=None,
     context: str | None = None,
 ) -> str:
@@ -47,25 +46,6 @@ def search_tool(
     else:
         results = engine.query(query, top_k)
 
-    if filter_tags:
-        from prussian.engine.fst.tags import generate_paradigm, match_tags, fst_available
-        if fst_available():
-            for chunk in results:
-                filtered_entries = []
-                for entry_dict in chunk.get("entries", []):
-                    word = entry_dict.get("word", "")
-                    for fe in engine.word_to_entry.get(word.lower(), []):
-                        matched = [f for f in generate_paradigm(fe)
-                                   if match_tags(f["tags"], filter_tags)]
-                        if matched:
-                            filtered_entries.append({
-                                **entry_dict,
-                                "forms": [{"form": f["form"], "tags": f["tags"][0]}
-                                          for f in matched],
-                            })
-                            break
-                chunk["filtered_entries"] = filtered_entries
-
     for chunk in results:
         for e in chunk.get("entries", []):
             e.setdefault("gender", _infer_gender(engine, e.get("word", "")))
@@ -79,8 +59,6 @@ def _format(results: list[dict[str, Any]]) -> str:
     for i, chunk in enumerate(results, 1):
         entries = chunk.get("entries", [])
         best = (chunk.get("best_line") or "").split(":", 1)[0].strip()
-        filtered = {fe.get("word"): fe.get("forms", [])
-                    for fe in chunk.get("filtered_entries", [])}
 
         if len(entries) == 1:
             prefix, indent = f"{i}. ", "  "
@@ -88,6 +66,15 @@ def _format(results: list[dict[str, Any]]) -> str:
             pos = chunk.get("pos")
             out.append(f"{i}. cluster{f' ({pos})' if pos else ''}:")
             prefix, indent = "  - ", "    "
+
+        # An exact hit inside a cluster leads; the rest of the family
+        # shrinks to one line of lemmas.
+        rest: list[dict[str, Any]] = []
+        if len(entries) > 1 and any(e.get("exact") for e in entries):
+            rest = [e for e in entries if not e.get("exact")
+                    and e.get("word") != best]
+            entries = [e for e in entries if e.get("exact")] + [
+                e for e in entries if not e.get("exact") and e not in rest]
 
         for e in entries:
             word = e.get("word", "")
@@ -99,12 +86,10 @@ def _format(results: list[dict[str, Any]]) -> str:
             mark = f"  ← {', '.join(marks)}" if marks else ""
             out.append(f"{prefix}{head(word, e.get('gender', ''))}{mark}")
             out.extend(translations(e.get("translations", {}), indent))
-            for f in filtered.get(word, []):
-                out.append(f"{indent}= {f['form']}  {f['tags']}")
+        if rest:
+            out.append(f"  - also in family: {', '.join(e.get('word', '') for e in rest)}")
         if best and best not in {e.get("word") for e in entries}:
             out.append(f"  context match: {chunk['best_line']}")
-        if "filtered_entries" in chunk and not filtered:
-            out.append("  (no forms match filter_tags)")
     return "\n".join(out)
 
 
@@ -135,12 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Semantic search in the Prussian dictionary.",
     )
     ap.add_argument("query", help="Search query (German, English, etc.).")
-    ap.add_argument("--top-k", type=int, default=10,
-                    help="number of results (default: 10).")
+    ap.add_argument("--top-k", type=int, default=5,
+                    help="number of results (default: 5).")
     ap.add_argument("--context", default=None,
                     help="usage context for reranking (enables reranker when set).")
-    ap.add_argument("--filter-tags", default=None,
-                    help="FST tag filter, e.g. 'Acc+Sg', 'PrfPrc+Pss', 'Opt'.")
     ap.add_argument("--verbose", action="store_true",
                     help="print full traceback on errors.")
     args = ap.parse_args(argv)
@@ -168,7 +151,6 @@ def main(argv: list[str] | None = None) -> int:
             engine,
             args.query,
             top_k=args.top_k,
-            filter_tags=args.filter_tags,
             reranker=reranker,
             context=args.context,
         )

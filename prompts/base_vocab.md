@@ -26,7 +26,6 @@ wīrstwei "to become" (FUTURE auxiliary), indicative present:
   get_word_forms("<verb>", features="PrfPrc+Act").
   E.g. as wīrst segīwuns (m) / segīwusi (f) — I will do.
 - Invariable short form: the neuter participle, e.g. as wīrst būwus.
-- See Syntax rules §11 for the full paradigm.
 
 stas "that; der/die/das" (demonstrative):
 
@@ -53,8 +52,9 @@ aīns "one" (numeral):
 - German indefinite article "ein/eine" is normally NOT translated;
   use aīns only when it means the numeral "one".
 
-Question/relative pronoun: kas (wer; der/die rel., Nom+Sg+Msc) — for
-other cases call get_word_forms("kas", …).
+Question/relative pronoun: kas (wer; der/die rel., Nom+Sg+Msc);
+ka = was / what (Nom+Acc Neu of kas) — for other cases call
+get_word_forms("kas", …).
 
 Prepositions with government (case is fixed — never guess):
 
@@ -84,5 +84,5 @@ get_word_forms with these):
 - pastātwei = werden (see wīrstwei above for the FUTURE auxiliary use)
 - ēitwei = gehen; perēitwei = kommen
 - segītun = tun; tikīntun = machen, herstellen
-- "wollen" has NO full verb: only defective kwāi (1/2sg present) and
-  the noun kwāits (Wille) exist — rephrase or flag as uncertain.
+- kwaitītun = wollen: kwaitēi (1sg/2sg/3sg AND 3pl), kwaitēimai (1pl),
+  kwaitēitei (2pl); catechism short form kwāi (sg). Noun: kwāits (Wille).

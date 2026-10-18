@@ -105,8 +105,6 @@ TOOL ROLES — read carefully, do not confuse them:
   retrying the same word. Do not add meta-words like "Prussian" or
   grammatical descriptions ("feminine accusative") — they hurt the
   match; grammar is handled by get_word_forms, not the query.
-  Optional filter_tags (e.g. "Acc+Sg") restricts results to forms
-  matching those FST tags.
 - validate_prussian(text) — grammar + agreement check of a Prussian
   sentence via the FST/CG3 pipeline.
 

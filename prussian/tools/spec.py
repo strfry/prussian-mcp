@@ -87,11 +87,6 @@ SEARCH = ToolSpec(
             "compounds.  Never add \"prussian\"/\"preußisch\" — it's implicit."
         ),
         "top_k": "number of results to return.",
-        "filter_tags": (
-            "optional FST tag filter, e.g. \"Acc+Sg\", \"PrfPrc+Pss\", \"Opt\". "
-            "When set, each entry's forms are filtered to those matching the "
-            "tags."
-        ),
         "context": (
             "usage context for reranking (enables the cross-encoder when set); "
             "re-orders the results by relevance to it and marks the "
@@ -108,13 +103,12 @@ LOOKUP = ToolSpec(
         "Use this to analyze Prussian words you already have — to confirm a "
         "word exists, find its lemma, and see its grammar tags.  Each token is "
         "analyzed via the FST cascade (lemma + tags like \"V+Ind+Prs+SP3\") "
-        "and enriched with dictionary translations.  Tokens without FST "
-        "analyses fall back to dictionary lookup.  Whole sentences are the "
+        "and enriched with dictionary translations.  A token the FST does not "
+        "know is reported as \"not in FST\".  Whole sentences are the "
         "normal case."
     ),
     args={
         "text": "Prussian text (one or more sentences).",
-        "fuzzy": "set True for Levenshtein fallback on OOV tokens.",
     },
 )
 
@@ -124,12 +118,14 @@ WORDFORMS = ToolSpec(
         "Get all declension or conjugation forms for a Prussian lemma.\n\n"
         "Use this to inflect a lemma into the exact form you need — never "
         "guess an inflected form.  Returns a flat list of forms with their FST "
-        "tags plus the paradigm's available features.  For verbs, the default "
-        "shows only indicative present forms; use `features` to request "
-        "specific categories.\n\n"
-        "Finite verb person tags: Sg1, Sg2, Pl1, Pl2 and SP3 — the 3rd person "
-        "carries no Sg/Pl distinction (e.g. \"Ind+Prs+Sg1\", \"Ind+Prs+SP3\", "
-        "never \"...+P3+Sg\")."
+        "tags plus the paradigm's feature groups (the tag combinations that "
+        "exist).  For verbs, the default shows only indicative present forms; "
+        "use `features` to request specific categories — any part of a "
+        "combination returns the whole block.\n\n"
+        "Examples: verb \"Ind+Prt\", \"Ind+Prs+SP3\", \"PrfPrc+Pss+Fem+Sg+Nom\" "
+        "(finite person: Sg1 Sg2 SP3 Pl1 Pl2) · noun \"Pl+Acc\" (gender is "
+        "inherent) · adjective \"Fem+Sg+Acc\", \"Comp\", \"Adv\" · pronoun "
+        "\"Msc+Pl+Dat\"."
     ),
     args={
         "lemma": "Prussian base form (from lookup_prussian_word).",

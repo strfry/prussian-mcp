@@ -2,5 +2,5 @@
 
 - :mod:`.tags` — FST morphological analysis, tag matching, form extraction.
 - :mod:`.validate` — three-valued CG3 grammar check
-  (``run_validate``, ``validate_with_corrections``, ``check_fsg_pipeline``).
+  (``run_validate``, ``check_fsg_pipeline``).
 """

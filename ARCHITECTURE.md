@@ -89,7 +89,7 @@ Tool-Beschreibungen zeigen.
 - `search.py`: `SearchEngine` – lädt den Chunk-Embedding-Store fürs Retrieval (BM25+dense RRF oder dense) und den Wort-/Eintrags-Index aus dem Wörterbuch (`DICTIONARY_PATH`, lean NVH; Formen löst der FST-Analyzer auf); `query()` liefert Chunks `{lemma, members, pos, score, text, entries}`. Es gibt nur diesen einen Suchpfad (kein Entry-/Chunk-Umschalten mehr).
 - `embeddings/`: `backend.py` (model2vec lokal / API), `client.py` (HTTP), `rerank.py` (`RerankedSearchEngine`)
 - `fst/tags.py`: FST-Morphologieanalyse, Tag-Matching, Formengenerierung
-- `fst/validate.py`: dreiwertige CG3-Grammatikprüfung — `run_validate`, `validate_with_corrections`, `check_fsg_pipeline`
+- `fst/validate.py`: dreiwertige CG3-Grammatikprüfung — `run_validate`, `check_fsg_pipeline`
 - `config.py`: liest Env-Variablen (`OPENAI_*`, `EMBEDDING_*`, `RERANK_*`)
 
 ### 3. prussian.adapters — dünne Wrapper

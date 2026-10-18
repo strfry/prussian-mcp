@@ -11,8 +11,8 @@ def validate_tool(text: str, include_conllu: bool = False) -> str:
     """Grammar check of Prussian text (FST + CG3 pipeline, three-valued).
 
     The single grammar tool: validates sentences and can also return the
-    full dependency analysis.  Automatically corrects unambiguous OOV
-    words via two-stage lookup (ortho → fuzzy) and re-validates.
+    full dependency analysis.  Words outside the FST are reported as OOV
+    (``coverage.oov``); nothing is auto-corrected.
 
     Args:
         text: Prussian sentence(s) to check (one or more sentences).
@@ -24,11 +24,11 @@ def validate_tool(text: str, include_conllu: bool = False) -> str:
         Compact JSON string (no indentation, empty fields dropped):
         ``{"overall": {"status", "n_sentences", "n_violations"},
         "sentences": [{sent_id, text, status, violations?, coverage,
-        conllu?}, ...], "spelling_corrections"?: [...]}``
+        conllu?}, ...]}``
     """
-    from prussian.engine.fst.validate import validate_with_corrections
+    from prussian.engine.fst.validate import run_validate
 
-    raw = validate_with_corrections(text, include_conllu=include_conllu)
+    raw = run_validate(text, include_conllu=include_conllu)
     try:
         data = json.loads(raw)
     except (ValueError, TypeError):
@@ -36,10 +36,6 @@ def validate_tool(text: str, include_conllu: bool = False) -> str:
     for s in data.get("sentences", []):
         for v in s.get("violations", []):
             v.pop("tag", None)  # "&<rule>" — duplicates "rule"
-    data["spelling_corrections"] = [
-        c for c in data.get("spelling_corrections", [])
-        if c.get("original") != c.get("corrected")
-    ]
     return json.dumps(_prune(data), ensure_ascii=False, separators=(",", ":"))
 
 
@@ -84,9 +80,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if parsed and "overall" in parsed:
         overall = parsed["overall"]
-        corrections = parsed.get("spelling_corrections", [])
-        suffix = " (with corrections)" if corrections else ""
-        print(f"overall: {overall.get('status')}{suffix} "
+        print(f"overall: {overall.get('status')} "
               f"({overall.get('n_sentences')} sentences, "
               f"{overall.get('n_violations')} violations)")
         for s in parsed.get("sentences", []):
@@ -101,12 +95,6 @@ def main(argv: list[str] | None = None) -> int:
                     sev = v.get("severity", "")
                     line += f"\n         {sev}: {rule} — {msg}"
             print(line)
-        for c in corrections:
-            certain = "" if c.get("certain", True) else ", unsicher"
-            corrected = c["corrected"]
-            method = c.get("method", "?")
-            print(f"    spelling: {c['original']} → {corrected}"
-                  f" ({method}{certain})")
     else:
         print(raw)
 

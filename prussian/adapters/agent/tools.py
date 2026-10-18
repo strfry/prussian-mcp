@@ -57,8 +57,7 @@ def build_local_toolset(engine=None) -> list:
     @tool
     def search_dictionary(
         query: str,
-        top_k: int = 10,
-        filter_tags: str | None = None,
+        top_k: int = 5,
         context: str | None = None,
     ) -> str:
         """Semantic search in the Prussian dictionary (description from spec).
@@ -66,27 +65,21 @@ def build_local_toolset(engine=None) -> list:
         Args:
             query: source-language query.
             top_k: number of results to return.
-            filter_tags: optional FST tag filter.
             context: optional usage context for reranking.
         """
         from prussian.tools.runtime import get_reranker
         reranker = get_reranker() if context else None
         return search_tool(engine, query, top_k=top_k,
-                           filter_tags=filter_tags,
                            reranker=reranker, context=context)
 
     @tool
-    def lookup_prussian_word(
-        text: str,
-        fuzzy: bool = False,
-    ) -> str:
+    def lookup_prussian_word(text: str) -> str:
         """Analyze a Prussian sentence via the FST cascade (description from spec).
 
         Args:
             text: Prussian text (one or more sentences).
-            fuzzy: set True for Levenshtein fallback on OOV tokens.
         """
-        return lookup_tool(engine, text, fuzzy=fuzzy)
+        return lookup_tool(engine, text)
 
     @tool
     def get_word_forms(lemma: str, features: str | None = None) -> str:

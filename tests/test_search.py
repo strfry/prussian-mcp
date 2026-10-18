@@ -172,24 +172,5 @@ class TestHomographs(unittest.TestCase):
                          [("be-2", True), ("be-1", None)])
 
 
-class TestFstLookup(unittest.TestCase):
-    def test_inflected_form_resolved_by_fst(self):
-        from unittest.mock import patch
-        engine = _make_engine(hybrid=False)
-        with patch("prussian.engine.fst.tags.lemma_tags",
-                   return_value={"bērzi": ["N+Fem+Sg+Acc"]}):
-            results = engine.lookup("berzin", apply_rules=False)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["word"], "bērzi")
-        self.assertEqual(results[0]["form"], "berzin")
-        self.assertEqual(results[0]["pgr"], "N+Fem+Sg+Acc")
-
-    def test_unknown_form_without_fst_analysis(self):
-        from unittest.mock import patch
-        engine = _make_engine(hybrid=False)
-        with patch("prussian.engine.fst.tags.lemma_tags", return_value={}):
-            self.assertEqual(engine.lookup("xyzzy", apply_rules=False), [])
-
-
 if __name__ == "__main__":
     unittest.main()

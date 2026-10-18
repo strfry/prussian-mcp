@@ -25,8 +25,7 @@ from prussian.tools.runtime import get_reranker as _get_reranker
 def search_dictionary():
     async def execute(
         query: str,
-        top_k: int = 10,
-        filter_tags: str = "",
+        top_k: int = 5,
         context: str = "",
     ) -> str:
         engine = _get_engine()
@@ -35,7 +34,6 @@ def search_dictionary():
                 engine,
                 query,
                 top_k=top_k,
-                filter_tags=filter_tags or None,
                 reranker=_get_reranker() if context else None,
                 context=context or None,
             )
@@ -48,10 +46,10 @@ def search_dictionary():
 
 @tool
 def lookup_prussian_word():
-    async def execute(text: str, fuzzy: bool = False) -> str:
+    async def execute(text: str) -> str:
         engine = _get_engine()
         result = await anyio.to_thread.run_sync(
-            lambda: lookup_tool(engine, text, fuzzy=bool(fuzzy))
+            lambda: lookup_tool(engine, text)
         )
         return result
 

@@ -80,22 +80,20 @@ mcp = FastMCP(
 
 def search_dictionary(
     query: str,
-    top_k: int = 10,
-    filter_tags: str | None = None,
+    top_k: int = 5,
     context: str = "",
 ) -> str:
     return search_tool(
         get_engine(),
         query,
         top_k=top_k,
-        filter_tags=filter_tags,
         reranker=get_reranker() if context else None,
         context=context or None,
     )
 
 
-def lookup_prussian_word(text: str, fuzzy: bool = False) -> str:
-    return lookup_tool(get_engine(), text, fuzzy=fuzzy)
+def lookup_prussian_word(text: str) -> str:
+    return lookup_tool(get_engine(), text)
 
 
 def get_word_forms(lemma: str, features: str | None = None) -> str:

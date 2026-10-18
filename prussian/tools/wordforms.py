@@ -18,8 +18,8 @@ def wordforms_tool(
 
     Output is a flat list of forms with their FST tags.  For verbs
     (analyses contain ``V``), the default shows only indicative present
-    forms plus the available features.  The ``features``
-    argument selects specific morphological categories.
+    forms.  The ``features`` argument selects specific morphological
+    categories.
 
     Args:
         engine: ``SearchEngine`` instance.
@@ -33,9 +33,12 @@ def wordforms_tool(
 
     Returns:
         Compact text per entry: ``lemma (gender)  — desc``, one
-        ``form: tags`` line per form, and the ``available features`` (the
-        FST tags occurring in the paradigm).  Unknown lemma / feature →
-        an ``error:`` line (plus the valid features).
+        ``form: tags`` line per form, then the paradigm's feature groups
+        (the tag combinations that actually occur, see
+        :func:`_feature_groups`).  An empty filter result says which tag
+        does not fit; a word without a paradigm of its own names the
+        lemmas it is a form of.  Unknown lemma / feature → an ``error:``
+        line (plus the valid features).
     """
     from prussian.engine.fst.tags import (
         fst_available,
@@ -71,25 +74,14 @@ def wordforms_tool(
 
     entries = engine.word_to_entry[word_lower]
     results: list[dict[str, Any]] = []
+    form_of: str | None = None
 
     for entry in entries:
         fw = generate_paradigm(entry) if fst_available() else []
+        cells = [f["tags"][0] for f in fw if f.get("tags")]
 
         # Detect POS from tag inventory
-        all_tag_strs = [f["tags"] for f in fw]
-        is_verb = any(
-            any(p.lower() == "v" for t in tags for p in t.split("+"))
-            for tags in all_tag_strs
-        )
-
-        # The set of individual tags occurring in the paradigm, in
-        # canonical order — any combination of them is a `features` filter.
-        present: set[str] = set()
-        for f in fw:
-            for t in f.get("tags", []):
-                present.update(t.split("+"))
-        available = [t for t in _TAG_ORDER if t in present]
-        available += sorted(present - set(_TAG_ORDER))
+        is_verb = any(c.split("+")[0] == "V" for c in cells)
 
         # Filter forms
         if wanted_tags is not None:
@@ -101,38 +93,189 @@ def wordforms_tool(
             # Verb default: Ind+Prs only
             filtered = [
                 f for f in fw
-                if any(
-                    all(
-                        p.lower() in {t.lower() for t in tag.split("+")}
-                        for p in ["Ind", "Prs"]
-                    )
-                    for tag in f.get("tags", [])
-                )
+                if match_tags(f.get("tags", []), "Ind+Prs")
             ]
         else:
             filtered = fw
 
-        # Format output
-        forms_out = [
-            {"form": f["form"], "tags": f["tags"]}
-            for f in filtered
-        ]
-
+        inherent, groups = _feature_groups(fw)
         entry_out: dict[str, Any] = {
             "lemma": entry.get("word", ""),
             "desc": entry.get("desc", ""),
             "gender": entry.get("gender", ""),
-            "forms": forms_out,
-            "available_features": available,
+            "forms": [{"form": f["form"], "tags": f["tags"]} for f in filtered],
+            "inherent": inherent,
+            "feature_groups": groups,
         }
-        if wanted_tags is not None and not forms_out:
-            entry_out["note"] = (
-                f"no forms match '{features}' — combine tags from "
-                "the available features"
-            )
+        if not fw:
+            if form_of is None:
+                form_of = _form_of(entry.get("word", "")) if fst_available() else ""
+            entry_out["note"] = form_of or "no paradigm (outside FST coverage)"
+        elif wanted_tags is not None and not filtered:
+            entry_out["note"] = _diagnose(cells, wanted_tags, inherent)
         results.append(entry_out)
 
     return _format(results)
+
+
+# ── Feature groups ───────────────────────────────────────────────────────────
+
+# Slot dimensions, in display order; everything else in a cell is its frame
+# (POS, mood, participle type, voice, degree, person of pronouns, …).
+_DIMS: tuple[tuple[str, ...], ...] = (
+    ("Prs", "Prt"),
+    ("Sg1", "Sg2", "SP3", "Pl1", "Pl2"),
+    ("Msc", "Fem", "Neu"),
+    ("Sg", "Pl"),
+    ("Nom", "Gen", "Dat", "Acc"),
+)
+_DIM_OF = {t: i for i, dim in enumerate(_DIMS) for t in dim}
+_MOODS = {"Ind", "Subj", "Opt", "Imprt", "Rel"}
+_PARTICIPLES = {"PrsPrc", "PrfPrc"}
+_POS = {"N", "A", "V", "Pron", "Num"}
+# Groups shown without their POS tag (the filter does not need it).
+_STRIP_POS = {"declension", "finite", "participle", "infinitive"}
+
+
+def _label(frame: tuple[str, ...], lemma_pos: str) -> str:
+    tags = set(frame)
+    if tags & _PARTICIPLES:
+        return "participle"
+    if tags & _MOODS:
+        return "finite"
+    if "Inf" in tags:
+        return "infinitive"
+    if frame[:1] == ("Adv",) and lemma_pos == "A":
+        return "derived adverb"
+    if frame[:1] and frame[0] in _POS:
+        return "declension"
+    return "invariable"
+
+
+def _feature_groups(fw: list[dict]) -> tuple[list[str], list[tuple[str, str]]]:
+    """The tag combinations that occur in a paradigm, grouped.
+
+    Returns ``(inherent, groups)``: ``inherent`` are the tags every cell
+    carries (a noun's gender, a reflexive verb's ``Refl``, a pronoun's
+    person); ``groups`` are ``(label, text)`` pairs such as
+    ``("finite", "Ind × Prs|Prt × Sg1|Sg2|SP3|Pl1|Pl2; Opt × SP3")``.
+    Within a group, frames with the same slot values are merged and
+    ``×`` joins the slot values that combine freely; ``(gaps)`` marks a
+    frame where not every combination exists.
+    """
+    cells = list(dict.fromkeys(f["tags"][0] for f in fw if f.get("tags")))
+    if not cells:
+        return [], []
+    split = [c.split("+") for c in cells]
+    lemma_pos = split[0][0]
+    common = set(split[0][1:]).intersection(*(set(t[1:]) for t in split))
+    inherent = [t for t in split[0][1:] if t in common]
+
+    # (frame, dimensions it uses) → per-dimension values and cell count;
+    # number-less cells (stas+Pron+Neu+Nom) thus form their own grid.
+    frames: dict[tuple, dict] = {}
+    for f, tags in zip(cells, split):
+        tags = [t for t in tags if t not in common]
+        frame = tuple(t for t in tags if t not in _DIM_OF)
+        key = (frame, frozenset(_DIM_OF[t] for t in tags if t in _DIM_OF))
+        info = frames.setdefault(key, {"dims": [set() for _ in _DIMS], "n": 0})
+        info["n"] += 1
+        for t in tags:
+            if t in _DIM_OF:
+                info["dims"][_DIM_OF[t]].add(t)
+    examples = {}
+    for f in fw:
+        tags = f["tags"][0].split("+")
+        frame = tuple(t for t in tags if t not in common and t not in _DIM_OF)
+        examples.setdefault(frame, f["form"])
+
+    # label → grid → frames (insertion order = paradigm order)
+    by_label: dict[str, dict[tuple, list]] = {}
+    for (frame, _), info in frames.items():
+        grid = tuple(tuple(v for v in dim if v in vals)
+                     for dim, vals in zip(_DIMS, info["dims"]))
+        size = 1
+        for vals in grid:
+            size *= len(vals) or 1
+        label = _label(frame, lemma_pos)
+        by_label.setdefault(label, {}).setdefault(grid, []).append(
+            (frame, info["n"] < size))
+
+    groups = []
+    for label, grids in by_label.items():
+        parts = []
+        for grid, members in grids.items():
+            strip = label in _STRIP_POS and all(fr[:1] == (lemma_pos,) for fr, _ in members)
+            head = _alternatives(["+".join(fr[1:] if strip else fr) for fr, _ in members])
+            text = " × ".join(([head] if head else [])
+                              + ["|".join(vals) for vals in grid if vals])
+            if not text:  # nothing left to choose: the inherent tags say it all
+                continue
+            if any(gap for _, gap in members):
+                text += " (gaps)"
+            parts.append(text)
+        if not parts:
+            continue
+        text = "; ".join(parts)
+        if label == "derived adverb":
+            text += f" ({examples[next(iter(grids.values()))[0][0]]})"
+        groups.append((label, text))
+    return inherent, groups
+
+
+def _alternatives(frames: list[str], sep: str = "") -> str:
+    """``["", "Comp", "Superl"]`` → ``[Comp|Superl]``; ``["Adv", "Adv+Comp"]``
+    → ``Adv[+Comp]``; otherwise ``a | b``."""
+    if len(frames) == 1:
+        return frames[0]
+    if "" in frames:
+        return "[" + "|".join(sep + f for f in frames if f) + "]"
+    first = frames[0].split("+")[0]
+    rest = [f[len(first) + 1:] for f in frames]
+    if "" in rest and all(f == first or f.startswith(first + "+") for f in frames):
+        return first + _alternatives(rest, "+")
+    return " | ".join(frames)
+
+
+def _diagnose(cells: list[str], wanted: list[str], inherent: list[str]) -> str:
+    """Why ``wanted`` matches no cell: an absent tag, or the one that clashes."""
+    present = {t.lower() for c in cells for t in c.split("+")}
+    missing = [t for t in wanted if t.lower() not in present]
+    if missing:
+        msg = f"{', '.join(missing)} not in this paradigm"
+        if inherent:
+            msg += f" (inherent: {'+'.join(inherent)})"
+        return msg
+
+    def hits(tags):
+        return [c for c in cells
+                if {t.lower() for t in tags} <= {p.lower() for p in c.split("+")}]
+
+    clashes = [(t, hits([w for w in wanted if w != t])) for t in wanted]
+    clashes = [(t, h) for t, h in clashes if h]
+    if not clashes:
+        return f"no form combines {'+'.join(wanted)}"
+    out = []
+    for t, h in clashes:
+        rest = "+".join(w for w in wanted if w != t)
+        pos = h[0].split("+")[0]
+        label = _label(tuple(x for x in h[0].split("+") if x not in _DIM_OF), pos)
+        out.append(f"{t} does not combine with {rest} ({label}, {len(h)} forms)")
+    return "; ".join(out)
+
+
+def _form_of(word: str) -> str:
+    """``stāi is a form of stas (Pron+Fem+Sg+Nom, …)`` — or ``""``."""
+    from prussian.engine.fst.tags import lemma_tags
+
+    others = {lemma: tags for lemma, tags in lemma_tags(word).items()
+              if lemma.lower() != word.lower()}
+    if not others:
+        return ""
+    parts = [f"{lemma} ({', '.join(tags[:3])}{', …' if len(tags) > 3 else ''})"
+             for lemma, tags in others.items()]
+    return (f"{word} is a form of {'; '.join(parts)} — "
+            "call get_word_forms on the lemma")
 
 
 def _format(results: list[dict[str, Any]]) -> str:
@@ -149,23 +292,11 @@ def _format(results: list[dict[str, Any]]) -> str:
             out.append("  (no forms)")
         if entry.get("note"):
             out.append(f"  note: {entry['note']}")
-        if entry["available_features"]:
-            out.append(f"  available features: {', '.join(entry['available_features'])}")
+        if entry.get("inherent"):
+            out.append(f"  inherent: {'+'.join(entry['inherent'])}")
+        for label, text in entry.get("feature_groups", []):
+            out.append(f"  {label}: {text}")
     return "\n".join(out)
-
-
-# Canonical presentation order: POS, mood, tense, person, number, case,
-# gender, degree/misc.
-_TAG_ORDER = [
-    "N", "A", "V", "Adv", "Pron", "Num", "Pr", "Adp", "Po",
-    "CC", "CS", "Pcle", "Interj", "Prop",
-    "Ind", "Opt", "Subj", "Imprt", "Rel", "Prs", "Prt", "Inf",
-    "Pss", "Act", "Refl", "PrsPrc", "PrfPrc",
-    "Sg1", "Sg2", "SP3", "Pl1", "Pl2", "P1", "P2", "P3", "Sg", "Pl",
-    "Nom", "Gen", "Dat", "Acc",
-    "Msc", "Fem", "Neu",
-    "Comp", "Superl", "Card", "Ord", "Encl",
-]
 
 
 _FEATURE_NAME_MAP = {

@@ -124,8 +124,8 @@ Test the engine offline (mock store/embedder, no model downloads):
 The four tools live in `prussian/tools/` and are wrapped 1:1 by every
 adapter (MCP, inspect-ai eval, CLI agent):
 
-- `search_dictionary(query, top_k, use_reranker, filter_tags)` - Semantic search (German/English/… → Prussian)
-- `lookup_prussian_word(text, fuzzy)` - Tokenize + FST-analyze a Prussian sentence, enrich from dictionary
+- `search_dictionary(query, top_k, context)` - Semantic search (German/English/… → Prussian)
+- `lookup_prussian_word(text)` - Tokenize + FST-analyze a Prussian sentence, enrich from dictionary
 - `get_word_forms(lemma, features)` - Declensions/conjugations, optional feature filter
 - `validate_prussian(text, include_conllu)` - Grammar check with the FST/CG3
   pipeline from [`prussian-fst`](https://github.com/strfry/prussian-fst)

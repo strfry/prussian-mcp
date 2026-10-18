@@ -27,9 +27,9 @@ _AGREEING = {"A", "Num"}
 DEGREES = ("", "Comp", "Superl")
 
 
-def _decl(prefix: list[str], genders) -> list[str]:
-    return ["+".join([*prefix, *([g] if g else []), n, c])
-            for g in genders for n in NUMBERS for c in CASES]
+def _decl(prefix: list[str], genders, numbers=NUMBERS) -> list[str]:
+    return ["+".join([*prefix, *([g] if g else []), *([n] if n else []), c])
+            for g in genders for n in numbers for c in CASES]
 
 
 def _verb_cells() -> list[str]:
@@ -56,6 +56,11 @@ def paradigm_cells(lemma_readings: list[tuple[str, ...]]) -> list[str]:
             continue
         pos = tags[0]
         if pos == "Pron":
+            # Every gender/number the lemma might have, number optional;
+            # the generator keeps only the cells listed in the lexc.
+            genders = GENDERS if any(t in GENDERS for t in tags) else ("",)
+            prefix = [t for t in tags if t not in _SLOTS]
+            cells.update((c, None) for c in _decl(prefix, genders, (*NUMBERS, "")))
             continue
         if pos == "V":
             refl = "+Refl" if "Refl" in tags else ""

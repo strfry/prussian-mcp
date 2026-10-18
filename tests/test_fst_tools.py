@@ -134,9 +134,72 @@ class TestParadigmCells(unittest.TestCase):
         self.assertIn("V+PrfPrc+Act+Msc+Sg+Nom", cells)
         self.assertIn("V+Ind+Prs+SP3+Refl", cells)
 
-    def test_invariable_and_pronoun(self):
+    def test_invariable(self):
         self.assertEqual(self.cells([("Pr",)]), ["Pr"])
-        self.assertEqual(self.cells([("Pron", "Sg", "Nom", "Msc")]), [])
+
+    def test_pronoun_gender_first_number_optional(self):
+        cells = self.cells([("Pron", "Msc", "Sg", "Nom")])
+        self.assertIn("Pron+Fem+Pl+Dat", cells)
+        self.assertIn("Pron+Neu+Nom", cells)
+        self.assertEqual(len(cells), 3 * 3 * 4)
+
+    def test_personal_pronoun_keeps_person_no_gender(self):
+        cells = self.cells([("Pron", "P1", "Sg", "Nom")])
+        self.assertIn("Pron+P1+Sg+Dat", cells)
+        self.assertFalse(any("Msc" in c for c in cells))
+
+
+def _fw(*cells):
+    return [{"form": f"f{i}", "tags": [c]} for i, c in enumerate(cells)]
+
+
+class TestFeatureGroups(unittest.TestCase):
+    """Grouped feature summary and empty-match diagnosis (pure logic)."""
+
+    def setUp(self):
+        from prussian.tools import wordforms
+        self.wf = wordforms
+
+    def test_noun_gender_is_inherent(self):
+        fw = _fw(*(f"N+Msc+{n}+{c}" for n in ("Sg", "Pl")
+                   for c in ("Nom", "Gen", "Dat", "Acc")))
+        inherent, groups = self.wf._feature_groups(fw)
+        self.assertEqual(inherent, ["Msc"])
+        self.assertEqual(groups, [("declension", "Sg|Pl × Nom|Gen|Dat|Acc")])
+
+    def test_verb_finite_and_participle_separate(self):
+        fw = _fw("V+Inf",
+                 *(f"V+Ind+Prs+{p}" for p in ("Sg1", "Sg2", "SP3", "Pl1", "Pl2")),
+                 "V+Imprt+Sg2", "V+Imprt+Pl2",
+                 *(f"V+PrfPrc+Pss+{g}+{n}+Nom" for g in ("Msc", "Fem")
+                   for n in ("Sg", "Pl")))
+        groups = dict(self.wf._feature_groups(fw)[1])
+        self.assertEqual(groups["finite"],
+                         "Ind × Prs × Sg1|Sg2|SP3|Pl1|Pl2; Imprt × Sg2|Pl2")
+        self.assertEqual(groups["participle"], "PrfPrc+Pss × Msc|Fem × Sg|Pl × Nom")
+        self.assertEqual(groups["infinitive"], "Inf")
+
+    def test_adjective_degrees_and_derived_adverb(self):
+        fw = _fw("A+Msc+Sg+Nom", "A+Comp+Msc+Sg+Nom", "Adv", "Adv+Comp")
+        groups = dict(self.wf._feature_groups(fw)[1])
+        self.assertEqual(groups["declension"], "[Comp] × Msc × Sg × Nom")
+        self.assertEqual(groups["derived adverb"], "Adv[+Comp] (f2)")
+
+    def test_gaps_marked(self):
+        fw = _fw("Pron+Msc+Sg+Nom", "Pron+Fem+Sg+Nom", "Pron+Msc+Pl+Nom",
+                 "Pron+Msc+Sg+Gen")
+        groups = dict(self.wf._feature_groups(fw)[1])
+        self.assertEqual(groups["declension"], "Msc|Fem × Sg|Pl × Nom|Gen (gaps)")
+
+    def test_diagnose_absent_tag_names_inherent(self):
+        cells = ["N+Msc+Sg+Nom", "N+Msc+Pl+Nom"]
+        self.assertEqual(self.wf._diagnose(cells, ["Fem"], ["Msc"]),
+                         "Fem not in this paradigm (inherent: Msc)")
+
+    def test_diagnose_clashing_tag(self):
+        cells = ["V+Ind+Prs+Sg1", "V+Ind+Prs+SP3", "V+PrfPrc+Pss+Msc+Sg+Nom"]
+        self.assertEqual(self.wf._diagnose(cells, ["Ind", "Prs", "Sg"], []),
+                         "Sg does not combine with Ind+Prs (finite, 2 forms)")
 
 
 @unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
@@ -147,6 +210,12 @@ class TestGenerateParadigm(unittest.TestCase):
         self.assertIn(("berzin", "N+Fem+Sg+Acc"), forms)
         forms = {(f["form"], f["tags"][0]) for f in generate_paradigm({"word": "būtwei"})}
         self.assertIn(("ast", "V+Ind+Prs+SP3"), forms)
+
+    def test_pronoun_forms(self):
+        from prussian.engine.fst.tags import generate_paradigm
+        forms = {(f["form"], f["tags"][0]) for f in generate_paradigm({"word": "stas"})}
+        self.assertIn(("stēimans", "Pron+Msc+Pl+Dat"), forms)
+        self.assertIn(("sta", "Pron+Neu+Nom"), forms)
 
     def test_unknown_lemma_yields_nothing(self):
         from prussian.engine.fst.tags import generate_paradigm
