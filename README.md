@@ -7,7 +7,7 @@ AI-powered Old Prussian chatbot and dictionary with semantic search using E5 mul
 ```
 ├── prussian/              The one package
 │   ├── tools/             The four tools — single source of truth (+ CLI scripts)
-│   ├── engine/            Dictionary + FST/CG3 engine (search, morphology, embeddings, fst)
+│   ├── engine/            Dictionary + FST/CG3 engine (search, embeddings, fst)
 │   ├── adapters/          Thin wrappers: mcp.py, inspect_tools.py, agent/ (CLI)
 │   └── config.py          Env-driven configuration
 ├── evals/                 inspect-ai reconstruction eval harness
@@ -113,14 +113,10 @@ uv run prussian-mcp --web
 
 ## Development & Testing
 
-Test the engine directly:
+Test the engine offline (mock store/embedder, no model downloads):
 
 ```bash
-# Test semantic search
-python scripts/test_search.py
-
-# Test word lookup and reranking
-python scripts/test_reranked_search.py
+.venv/bin/python -m unittest tests.test_search tests.test_fst_tools tests.test_tool_specs
 ```
 
 ## MCP Tools
@@ -149,7 +145,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
 - **`prussian.tools`**: the four tools — single source of truth wrapped by every adapter
-- **`prussian.engine`**: search, morphology, embeddings, and the FST/CG3 validator
+- **`prussian.engine`**: search, embeddings, and the FST/CG3 validator
 - **`prussian.adapters.mcp`**: FastMCP server (stdio / streamable-http) — the four tools + FST health, nothing else
 - **`prussian.adapters.agent`** / **`prussian.adapters.inspect_tools`**: the CLI agent and the inspect-ai eval
 

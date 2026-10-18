@@ -3,9 +3,7 @@
 Sub-packages:
 
 - :mod:`prussian.engine.search` — the ``SearchEngine`` (semantic search,
-  reverse lookup, form generation).
-- :mod:`prussian.engine.morphology` — Prussian Glossing Rules (PGR)
-  parsing and feature utilities.
+  reverse lookup; inflected forms resolved by the FST analyzer).
 - :mod:`prussian.engine.embeddings` — embedding backends, HTTP client,
   and the reranked search wrapper.
 - :mod:`prussian.engine.fst` — FST tag analysis and the CG3 grammar

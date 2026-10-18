@@ -39,8 +39,7 @@ prussian-mcp/
 │   │   ├── __init__.py           # search_tool, lookup_tool, wordforms_tool, validate_tool
 │   │   ├── search.py  lookup.py  wordforms.py  validate.py
 │   ├── engine/                   # Wörterbuch- + FST/CG3-Engine
-│   │   ├── search.py             # SearchEngine (Embedding-Suche, Lookup, Formen)
-│   │   ├── morphology.py         # PGR (Prussian Glossing Rules)
+│   │   ├── search.py             # SearchEngine (Embedding-Suche, Lookup; Formen via FST)
 │   │   ├── embeddings/           # backend.py (model2vec/API), client.py, rerank.py
 │   │   └── fst/                  # tags.py (FST-Analyse), validate.py (CG3-Pipeline)
 │   └── adapters/                 # dünne Framework-Wrapper
@@ -56,12 +55,15 @@ prussian-mcp/
 
 ## Daten
 
-### Wörterbuch (../corpus/parsed/twanksta_entries.json)
-- ~10.753 Einträge; kanonische Quelle, gebaut von `scripts/twanksta_parse.py`
-  im corpus-Repo — keine Kopie im mcp-Repo (`PRUSSIAN_DICTIONARY` überschreibt
-  den Pfad bei Bedarf)
-- Felder: word, paradigm, gender, desc, translations, forms
-- Übersetzungen: miks (DE), engl (EN), leit (LT), lett (Lettisch), pols (Polnisch), mask (Russisch)
+### Wörterbuch (../corpus/parsed/twanksta_dmlex.nvh)
+- lean Twanksta-NVH, ~10.769 Einträge; geschrieben vom Kompressor in `../fst`
+  (`gen/compress_forms.py`), gelesen via `prussian_fst.nvh.read_entries` —
+  keine Kopie im mcp-Repo (`PRUSSIAN_DICTIONARY` überschreibt den Pfad)
+- Felder: id (`be-1`/`be-2` bei Homographen), word, homograph, pos, gender,
+  paradigm, label, desc (legacy.desc als Klartext), translations
+- Übersetzungen: de, en, lt, lv, pl, ru
+- Keine Flexionsformen: Formen → Lemma löst der FST-Analyzer auf
+  (`tags.lemma_tags`), Paradigmen erzeugt der FST-Generator
 
 ### Embeddings (embeddings/)
 - Semantische Suche mit konfigurierbarem Embedding-Modell
@@ -84,8 +86,7 @@ Tool-Beschreibungen zeigen.
 
 ### 2. prussian.engine — Wörterbuch- + FST/CG3-Engine
 
-- `search.py`: `SearchEngine` – lädt den Chunk-Embedding-Store fürs Retrieval (BM25+dense RRF oder dense) und die Wort-/Formen-Indizes aus dem Wörterbuch (`DICTIONARY_PATH`); `query()` liefert Chunks `{lemma, members, pos, score, text, entries}`. Es gibt nur diesen einen Suchpfad (kein Entry-/Chunk-Umschalten mehr).
-- `morphology.py`: PGR-Parsing und Feature-Utilities
+- `search.py`: `SearchEngine` – lädt den Chunk-Embedding-Store fürs Retrieval (BM25+dense RRF oder dense) und den Wort-/Eintrags-Index aus dem Wörterbuch (`DICTIONARY_PATH`, lean NVH; Formen löst der FST-Analyzer auf); `query()` liefert Chunks `{lemma, members, pos, score, text, entries}`. Es gibt nur diesen einen Suchpfad (kein Entry-/Chunk-Umschalten mehr).
 - `embeddings/`: `backend.py` (model2vec lokal / API), `client.py` (HTTP), `rerank.py` (`RerankedSearchEngine`)
 - `fst/tags.py`: FST-Morphologieanalyse, Tag-Matching, Formengenerierung
 - `fst/validate.py`: dreiwertige CG3-Grammatikprüfung — `run_validate`, `validate_with_corrections`, `check_fsg_pipeline`

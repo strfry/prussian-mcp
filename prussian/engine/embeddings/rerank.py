@@ -26,7 +26,7 @@ def format_entry_multilang(entry: dict) -> str:
     """
     translations = entry.get("translations", {})
     trans_parts = []
-    for lang_key in ["miks", "engl", "leit", "latt", "pols", "mask"]:
+    for lang_key in ["de", "en", "lt", "lv", "pl", "ru"]:
         trans = translations.get(lang_key, [])
         if trans and trans[0]:
             trans_parts.append(trans[0])

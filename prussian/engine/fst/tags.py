@@ -277,6 +277,36 @@ def analyze_words(
     return result
 
 
+def lemma_tags(word: str, *, macron: bool = False) -> dict[str, list[str]]:
+    """Strict FST analyses of one word, grouped by lemma: ``{lemma: [tags]}``.
+
+    The dictionary lookup's form index: surface/lowercase/titlecase/short-prep
+    stages of :func:`analyze_words`, never the lenient layer (the lookup's own
+    prefix/ortho rules play that role).  ``macron=True`` analyzes with
+    ``macron.hfstol`` instead (macron loss tolerated).
+    """
+    if fst_api is None or not word:
+        return {}
+    if macron:
+        path = DEFAULT_FST.parent / "macron.hfstol"
+        if not path.exists():
+            return {}
+        with fst_api._PIPELINE_LOCK:
+            hits = flookup_batch(list(dict.fromkeys([word, word.lower()])), path)
+        analyses = hits.get(word) or hits.get(word.lower()) or []
+    else:
+        info = analyze_words([word]).get(word, {})
+        if info.get("via") in (None, "lenient"):
+            return {}
+        analyses = info["analyses"]
+    out: dict[str, list[str]] = {}
+    for lemma, tags in analyses:
+        tag = "+".join(tags)
+        if tag not in out.setdefault(lemma, []):
+            out[lemma].append(tag)
+    return out
+
+
 # ── Paradigm generation: lemma → FST-generated forms ─────────────────────────
 
 

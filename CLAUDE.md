@@ -31,7 +31,7 @@ Single top-level package `prussian/`:
 | Path | Role |
 |---|---|
 | `prussian/tools/` | The four canonical tools (`search_tool`, `lookup_tool`, `wordforms_tool`, `validate_tool`) — the single source of truth every adapter wraps. Also the `validate`/`search`/`lookup`/`wordforms` console scripts. |
-| `prussian/engine/` | Dictionary + FST/CG3 engine. `search.py` (`SearchEngine`), `morphology.py` (PGR), `embeddings/` (`backend.py`, `client.py`, `rerank.py`), `fst/` (`tags.py`, `validate.py` = `run_validate`/`validate_with_corrections`/`check_fsg_pipeline`). |
+| `prussian/engine/` | Dictionary + FST/CG3 engine. `search.py` (`SearchEngine`), `embeddings/` (`backend.py`, `client.py`, `rerank.py`), `fst/` (`tags.py`, `validate.py` = `run_validate`/`validate_with_corrections`/`check_fsg_pipeline`). |
 | `prussian/adapters/mcp.py` | FastMCP server (stdio / streamable-http): the four tools + FST health, nothing else. Entry point `prussian-mcp`. |
 | `prussian/adapters/agent/` | The `prussian-agent` CLI: `runner.py` (`run_agent`/`RunResult`, `extract_candidate`, `parse_last_validation`), `tools.py` (in-process smolagents tools), `cli.py` (argparse entry point). |
 | `prussian/adapters/inspect_tools.py` | inspect-ai `@tool` wrappers for the reconstruction eval. |

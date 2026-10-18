@@ -37,8 +37,7 @@ def _make_engine(hybrid=True):
 
     engine = SearchEngine.__new__(SearchEngine)
     engine.word_to_entry = {}
-    engine.form_to_lemma = {}
-    engine.form_to_pgr = {}
+    engine.id_to_entry = {}
 
     records = _fake_chunk_records()
     engine.store = MagicMock()
@@ -136,6 +135,60 @@ class TestExactMatch(unittest.TestCase):
         keys = SearchEngine._translation_keys("to sink (go down); Senke")
         self.assertEqual(keys, {"to sink (go down)": 0, "to sink": 1,
                                 "senke": 0})
+
+
+def _homograph_engine():
+    """Two homograph chunks (be-1, be-2) carrying member_ids."""
+    engine = _make_engine(hybrid=False)
+    records = [
+        {"lemma": "be", "members": ["be"], "member_ids": ["be-1"],
+         "text": "be (preposition): without | ohne"},
+        {"lemma": "be", "members": ["be"], "member_ids": ["be-2"],
+         "text": "be (conjunction): and | und"},
+    ]
+    engine.store.records = records
+    engine.store.query = MagicMock(return_value=[(r, 0.5) for r in records])
+    engine.word_to_entry, engine.id_to_entry = {}, {}
+    engine.entries = [
+        {"id": "be-1", "word": "be", "translations": {"en": ["without"]}},
+        {"id": "be-2", "word": "be", "translations": {"en": ["and"]}},
+    ]
+    engine._build_indices()
+    return engine
+
+
+class TestHomographs(unittest.TestCase):
+    def test_chunk_shows_only_its_entries(self):
+        results = _homograph_engine().query("whatever", top_k=2)
+        self.assertEqual(
+            [[(e["id"], e["translations"]["en"]) for e in c["entries"]]
+             for c in results],
+            [[("be-1", ["without"])], [("be-2", ["and"])]])
+
+    def test_exact_marks_only_matching_homograph(self):
+        results = _homograph_engine().query("and", top_k=2)
+        self.assertEqual([(c["entries"][0]["id"], c["entries"][0].get("exact"))
+                          for c in results],
+                         [("be-2", True), ("be-1", None)])
+
+
+class TestFstLookup(unittest.TestCase):
+    def test_inflected_form_resolved_by_fst(self):
+        from unittest.mock import patch
+        engine = _make_engine(hybrid=False)
+        with patch("prussian.engine.fst.tags.lemma_tags",
+                   return_value={"bērzi": ["N+Fem+Sg+Acc"]}):
+            results = engine.lookup("berzin", apply_rules=False)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["word"], "bērzi")
+        self.assertEqual(results[0]["form"], "berzin")
+        self.assertEqual(results[0]["pgr"], "N+Fem+Sg+Acc")
+
+    def test_unknown_form_without_fst_analysis(self):
+        from unittest.mock import patch
+        engine = _make_engine(hybrid=False)
+        with patch("prussian.engine.fst.tags.lemma_tags", return_value={}):
+            self.assertEqual(engine.lookup("xyzzy", apply_rules=False), [])
 
 
 if __name__ == "__main__":

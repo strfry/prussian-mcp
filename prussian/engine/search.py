@@ -16,7 +16,7 @@ from prussian_embeddings import (
     prefix_tokens,
     ngram_tokens,
 )
-from prussian.engine.morphology import extract_pgr_from_entry, parse_pgr, build_pgr
+from prussian_fst.nvh import read_entries
 
 
 class SearchEngine:
@@ -53,8 +53,7 @@ class SearchEngine:
     def __init__(self):
         """Initialize search engine by loading dictionary and embeddings."""
         self.word_to_entry: Dict[str, List[Dict[str, Any]]] = {}
-        self.form_to_lemma: Dict[str, List[str]] = {}
-        self.form_to_pgr: Dict[str, List[str]] = {}
+        self.id_to_entry: Dict[str, Dict[str, Any]] = {}
 
         print("Loading embedding model...", file=sys.stderr)
         self.embedder = get_embedder()
@@ -88,64 +87,58 @@ class SearchEngine:
         else:
             self.bm25 = self.bm25_prefix = self.bm25_ngram = None
 
-        # Word/form indices + translation enrichment come from the dictionary
-        # (the canonical source), not a second embedding store.
+        # Word index + translation enrichment come from the dictionary (the
+        # lean NVH), not a second embedding store.  Inflected forms are not
+        # indexed: the FST analyzer resolves them (see ``_exact_lookup``).
         if not DICTIONARY_PATH.exists():
             raise FileNotFoundError(
-                f"Dictionary not found at {DICTIONARY_PATH}. Run `make download` "
-                "or set PRUSSIAN_DICTIONARY."
+                f"Dictionary not found at {DICTIONARY_PATH}. Build the lean NVH "
+                "(../corpus, ../fst) or set PRUSSIAN_DICTIONARY."
             )
-        import json as _json
-        with open(DICTIONARY_PATH, "r", encoding="utf-8") as f:
-            self.entries = _json.load(f)
+        self.entries = read_entries(DICTIONARY_PATH)
 
         print("Building indices...", file=sys.stderr)
         self._build_indices()
 
 
     def _build_indices(self):
-        """Build lookup indices for words and forms."""
+        """Build the word, entry-id, exact-translation and chunk indices."""
         for entry in self.entries:
             word = entry.get("word", "").lower()
             if word:
                 self.word_to_entry.setdefault(word, []).append(entry)
+            self.id_to_entry[entry.get("id") or word] = entry
 
-        for entry in self.entries:
-            lemma = entry.get("word", "").lower()
-            forms_pgr = extract_pgr_from_entry(entry)
-            for form, pgr in forms_pgr:
-                if form:
-                    form_lower = form.lower()
-                    lemmas = self.form_to_lemma.setdefault(form_lower, [])
-                    if lemma not in lemmas:
-                        lemmas.append(lemma)
-                    if form_lower not in self.form_to_pgr:
-                        self.form_to_pgr[form_lower] = []
-                    if pgr not in self.form_to_pgr[form_lower]:
-                        self.form_to_pgr[form_lower].append(pgr)
-
-        # Exact-translation index (all six languages) → lemmas, plus
-        # lemma → chunk indices, so a literal match can be pinned on top of
-        # the fuzzy BM25/dense ranking (see ``query``).
+        # Exact-translation index (all six languages) → entry ids, plus
+        # entry id → chunk indices, so a literal match can be pinned on top
+        # of the fuzzy BM25/dense ranking (see ``query``).
         self.translation_to_lemmas: Dict[str, Dict[str, int]] = {}
-        for entry in self.entries:
-            lemma = entry.get("word", "").lower()
+        for entry_id, entry in self.id_to_entry.items():
             tr = entry.get("translations")
-            if not lemma or not isinstance(tr, dict):
+            if not isinstance(tr, dict):
                 continue
             for vals in tr.values():
                 for val in ([vals] if isinstance(vals, str) else vals or []):
                     for key, tier in self._translation_keys(val).items():
                         tiers = self.translation_to_lemmas.setdefault(key, {})
-                        tiers[lemma] = min(tier, tiers.get(lemma, tier))
+                        tiers[entry_id] = min(tier, tiers.get(entry_id, tier))
         self.lemma_to_chunks: Dict[str, List[int]] = {}
         for idx, rec in enumerate(self.store.records):
-            for m in rec.get("members", []):
-                self.lemma_to_chunks.setdefault(m.lower(), []).append(idx)
+            for entry_id in self._record_ids(rec):
+                self.lemma_to_chunks.setdefault(entry_id, []).append(idx)
 
-        print(
-            f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
-        )
+        print(f"Indexed {len(self.word_to_entry)} lemmas "
+              f"({len(self.id_to_entry)} entries)")
+
+    def _record_ids(self, rec: Dict[str, Any]) -> List[str]:
+        """Entry ids of a chunk: ``member_ids``, else all entries of its words."""
+        if rec.get("member_ids"):
+            return list(rec["member_ids"])
+        ids: List[str] = []
+        for m in dict.fromkeys(w.lower() for w in rec.get("members", [])):
+            for e in self.word_to_entry.get(m, []):
+                ids.append(e.get("id") or m)
+        return ids
 
     @staticmethod
     def _translation_keys(text: str) -> Dict[str, int]:
@@ -167,38 +160,42 @@ class SearchEngine:
         return keys
 
     def _exact_lemmas(self, query: str) -> List[str]:
-        """Lemmas with a translation literally equal to ``query``, best first.
+        """Entry ids with a translation literally equal to ``query``, best first.
 
         Tier sums rank a match on the full translation text above one that
         only matches after dropping parentheticals.
         """
         best: Dict[str, int] = {}
         for key, q_tier in self._translation_keys(query).items():
-            for lemma, t_tier in self.translation_to_lemmas.get(key, {}).items():
-                best[lemma] = min(q_tier + t_tier, best.get(lemma, 9))
-        return sorted(best, key=lambda lemma: best[lemma])
+            for entry_id, t_tier in self.translation_to_lemmas.get(key, {}).items():
+                best[entry_id] = min(q_tier + t_tier, best.get(entry_id, 9))
+        return sorted(best, key=lambda entry_id: best[entry_id])
 
-    def _exact_lookup(self, word: str) -> list:
-        """Look up a word exactly in lemma and form indices.
+    def _exact_lookup(self, word: str, macron: bool = False) -> list:
+        """Look up a word exactly: as a lemma, else as a form via the FST.
+
+        Inflected forms are resolved by the FST analyzer (strict stages, see
+        :func:`prussian.engine.fst.tags.lemma_tags`); ``macron=True`` uses the
+        macron-loss analyzer instead.
 
         Returns:
             List of formatted lookup results (empty if not found).
         """
+        from prussian.engine.fst.tags import lemma_tags
+
+        analyses = lemma_tags(word, macron=macron)
         results = []
-
-        if word in self.word_to_entry:
+        if not macron and word in self.word_to_entry:
             for entry in self.word_to_entry[word]:
-                results.append(self._format_lookup_result(entry, matched_form=word))
+                results.append(self._format_lookup_result(
+                    entry, matched_form=word, tags=analyses.get(entry["word"])))
             return results
 
-        if word in self.form_to_lemma:
-            for lemma in self.form_to_lemma[word]:
-                for entry in self.word_to_entry.get(lemma, []):
-                    result = self._format_lookup_result(entry, matched_form=word)
-                    if result not in results:
-                        results.append(result)
-            return results
-
+        for lemma, tags in analyses.items():
+            for entry in self.word_to_entry.get(lemma.lower(), []):
+                result = self._format_lookup_result(entry, matched_form=word, tags=tags)
+                if result not in results:
+                    results.append(result)
         return results
 
     def _try_prefix_rules(self, word: str, _depth: int = 0) -> list:
@@ -228,12 +225,10 @@ class SearchEngine:
         return []
 
     def _macron_lookup(self, word: str) -> list:
-        """Full-index scan with macrons stripped (ā→a, ē→e, etc.).
+        """Lemma scan with macrons stripped (ā→a, ē→e, etc.), else the FST.
 
-        Scans all lemmas and inflected forms for a normalized match.
-        When an inflected form is found, the dictionary form (with
-        original macrons) is passed as ``matched_form`` so that the
-        result includes the correct ``form`` and ``pgr`` fields.
+        Lemmas are compared macron-normalized; an inflected form goes
+        through the FST's macron-loss analyzer.
         """
         results = []
         word_normalized = self._normalize_macrons(word)
@@ -244,15 +239,7 @@ class SearchEngine:
                     results.append(self._format_lookup_result(entry, matched_form=word))
 
         if not results:
-            for form, lemmas in self.form_to_lemma.items():
-                if self._normalize_macrons(form) == word_normalized:
-                    for lemma in lemmas:
-                        for entry in self.word_to_entry.get(lemma, []):
-                            result = self._format_lookup_result(
-                                entry, matched_form=form
-                            )
-                            if result not in results:
-                                results.append(result)
+            results = self._exact_lookup(word, macron=True)
 
         return results
 
@@ -321,11 +308,11 @@ class SearchEngine:
         if self.store is None:
             return []
 
-        exact_lemmas = self._exact_lemmas(query)
-        exact = set(exact_lemmas)
+        exact_ids = self._exact_lemmas(query)
+        exact = set(exact_ids)
         pinned: List[int] = []
-        for lemma in exact_lemmas:
-            for idx in self.lemma_to_chunks.get(lemma, []):
+        for entry_id in exact_ids:
+            for idx in self.lemma_to_chunks.get(entry_id, []):
                 if idx not in pinned:
                     pinned.append(idx)
         pinned_recs = [self.store.records[i] for i in pinned]
@@ -346,10 +333,12 @@ class SearchEngine:
         for record, score in hits:
             members = record.get("members", [])
             entries = [
-                {"word": e["word"], "translations": e.get("translations", {}),
-                 **({"exact": True} if e["word"].lower() in exact else {})}
-                for m in members
-                for e in self.word_to_entry.get(m.lower(), [])
+                {"id": entry_id, "word": e["word"],
+                 "translations": e.get("translations", {}),
+                 "gender": e.get("gender", ""),
+                 **({"exact": True} if entry_id in exact else {})}
+                for entry_id in self._record_ids(record)
+                if (e := self.id_to_entry.get(entry_id))
             ]
             results.append({
                 "lemma": record.get("lemma", ""),
@@ -540,48 +529,6 @@ class SearchEngine:
             return parts[0]
         return None
 
-    def _simplify_pgr(self, pgr_string: str) -> str:
-        """Collapse a pipe-separated alternation when exactly one feature varies.
-
-        GEN.PL.MASC|GEN.PL.FEM|GEN.PL.NEUT → GEN.PL  (only GENDER varies)
-        PST.SG.1.IND|PST.SG.2.IND|PST.SG.3.IND → PST.SG.IND  (only PERSON varies)
-        ACC.SG.FEM|NOM.PL.FEM → ACC.SG.FEM|NOM.PL.FEM  (CASE and NUMBER vary)
-        """
-        if not pgr_string or "|" not in pgr_string:
-            return pgr_string
-
-        pgrs = pgr_string.split("|")
-        if len(pgrs) == 1:
-            return pgr_string
-
-        features_list = [parse_pgr(p) for p in pgrs]
-
-        all_keys = set()
-        for features in features_list:
-            all_keys |= set(features.keys())
-
-        common_keys = set(features_list[0].keys())
-        for features in features_list[1:]:
-            common_keys &= set(features.keys())
-
-        differing_keys = {
-            k for k in common_keys
-            if len({f[k] for f in features_list if k in f}) > 1
-        }
-
-        keys_not_in_all = all_keys - common_keys
-        differing_keys |= keys_not_in_all
-
-        if len(differing_keys) != 1:
-            return pgr_string
-
-        kept_keys = common_keys - differing_keys
-        if not kept_keys:
-            return pgr_string
-
-        kept_features = {k: features_list[0][k] for k in kept_keys}
-        return build_pgr(kept_features)
-
     def _resolve_reference(self, target: str, ref_word: str) -> List[Dict[str, Any]]:
         """Resolve a reference to a lemma and return formatted results.
 
@@ -590,43 +537,36 @@ class SearchEngine:
             ref_word: The reference word (e.g., "abbejan")
 
         Returns:
-            List with single formatted result containing pgr from matching forms
+            One result per target entry.  The reference itself comes from
+            the dictionary (``↑ Target`` in desc); ``pgr`` is added when the
+            FST analyzes ``ref_word`` as a form of the target.
         """
+        from prussian.engine.fst.tags import lemma_tags
+
         target_lower = target.lower()
         if target_lower not in self.word_to_entry:
             return []
 
-        results = []
-        for entry in self.word_to_entry[target_lower]:
-            forms_pgr = extract_pgr_from_entry(entry)
-            matching = [(f, p) for f, p in forms_pgr if f.lower() == ref_word.lower()]
-
-            if not matching:
-                continue
-
-            pgrs = [p for _, p in matching]
-            pgr_string = "|".join(pgrs)
-            simplified_pgr = self._simplify_pgr(pgr_string)
-
-            results.append({
-                "word": entry.get("word", ""),
-                "translations": entry.get("translations", {}),
-                "matched_form": ref_word,
-                "pgr": simplified_pgr,
-            })
-
-        return results
+        analyses = {lemma.lower(): tags for lemma, tags in lemma_tags(ref_word).items()}
+        tags = analyses.get(target_lower)
+        return [{
+            "word": entry.get("word", ""),
+            "translations": entry.get("translations", {}),
+            "matched_form": ref_word,
+            **({"pgr": "|".join(tags)} if tags else {}),
+        } for entry in self.word_to_entry[target_lower]]
 
     def _format_lookup_result(
         self, entry: Dict[str, Any], matched_form: str = None,
         method: str = None, rule_applied: str = None,
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Format an entry for lookup results.
 
-        Always includes ``pgr`` when a form match is found (inflected or
-        lemma).  Includes ``form`` for the inflected standard form
-        (dictionary form) when it differs from the lemma.  Includes
-        ``method`` / ``rule_applied`` metadata when apply_rules is active.
+        Includes ``pgr`` (the FST analyses of the matched form, ``|``-joined)
+        when ``tags`` are given, and ``form`` when the matched form differs
+        from the lemma.  Includes ``method`` / ``rule_applied`` metadata when
+        apply_rules is active.
         """
         translations = entry.get("translations", {})
 
@@ -642,18 +582,8 @@ class SearchEngine:
             matched_lower = matched_form.lower()
             lemma_lower = entry.get("word", "").lower()
 
-            # Find all matching forms with their PGR tags
-            entry_pgrs = [
-                pgr
-                for form, pgr in extract_pgr_from_entry(entry)
-                if form.lower() == matched_lower
-            ]
-            if entry_pgrs:
-                seen = []
-                for pgr in entry_pgrs:
-                    if pgr not in seen:
-                        seen.append(pgr)
-                result["pgr"] = self._simplify_pgr("|".join(seen))
+            if tags:
+                result["pgr"] = "|".join(tags)
 
             # Show inflected form when it differs from lemma
             if matched_lower != lemma_lower:

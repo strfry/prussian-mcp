@@ -10,11 +10,11 @@ EMBEDDINGS_DIR = PROJECT_ROOT.parent / "embeddings" / "data"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 #PROMPTS_DIR = Path("../../prompts")
 
-# Kanonisches Dictionary: wird im corpus-Repo gebaut (scripts/twanksta_parse.py)
-# und von allen Konsumenten direkt dort referenziert — keine Kopien in den Repos.
+# Kanonisches Dictionary: die lean Twanksta-NVH im corpus-Repo (geschrieben vom
+# Kompressor in ../fst, gelesen via prussian_fst.nvh) — keine Kopien in den Repos.
 CORPUS_PARSED = PROJECT_ROOT.parent / "corpus" / "parsed"
 DICTIONARY_PATH = Path(os.getenv(
-    "PRUSSIAN_DICTIONARY", str(CORPUS_PARSED / "twanksta_entries.json")))
+    "PRUSSIAN_DICTIONARY", str(CORPUS_PARSED / "twanksta_dmlex.nvh")))
 AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
 # ── Embedding storage and search ──────────────────────────────────────────────
