@@ -100,7 +100,7 @@ def resolve_features(spec: str) -> list[str] | None:
     """Resolve a comma-separated feature spec to FST tags.
 
     Handles human-readable names (``"participle"``, ``"conjunctive"``),
-    raw FST tags (``"Part"``, ``"Ind+Pres"``), and mixed input.
+    raw FST tags (``"PrfPrc"``, ``"Ind+Prs"``), and mixed input.
     Returns ``None`` on unknown feature (caller should emit error dict).
     """
     if not spec:
@@ -148,16 +148,16 @@ def match_tags(tags: list[str], wanted: str) -> bool:
 
     ``wanted`` is split on ``+``, ``.``, ``,`` and whitespace; each piece
     is checked against at least one individual tag string (which may be
-    ``+``-joined, e.g. ``"N+Sg+Akk+Fem"``).
+    ``+``-joined, e.g. ``"N+Sg+Acc+Fem"``).
 
     A form matches when at least one of its tag strings contains ALL
     wanted tags (case-insensitive).
 
     Examples::
 
-        match_tags(["N+Sg+Akk+Fem"], "Akk+Sg")  → True
-        match_tags(["N+Sg+Nom+Fem"], "Akk+Sg")  → False
-        match_tags(["V+Ind+Pres+P1+Sg"], "Ind+Pres")  → True
+        match_tags(["N+Sg+Acc+Fem"], "Acc+Sg")  → True
+        match_tags(["N+Sg+Nom+Fem"], "Acc+Sg")  → False
+        match_tags(["V+Ind+Prs+Sg1"], "Ind+Prs")  → True
         match_tags(["N+Sg+Gen+Fem", "N+Pl+Nom+Fem"], "Gen+Pl")  → False
         match_tags(["N+Pl+Gen+Fem"], "Gen+Pl")  → True
     """

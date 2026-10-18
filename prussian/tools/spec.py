@@ -99,7 +99,7 @@ LOOKUP = ToolSpec(
         "dictionary.\n\n"
         "Use this to analyze Prussian words you already have — to confirm a "
         "word exists, find its lemma, and see its grammar tags.  Each token is "
-        "analyzed via the FST cascade (lemma + tags like \"V+Ind+Pres+P3+Sg\") "
+        "analyzed via the FST cascade (lemma + tags like \"V+Ind+Prs+SP3\") "
         "and enriched with dictionary translations.  Tokens without FST "
         "analyses fall back to dictionary lookup.  Whole sentences are the "
         "normal case."
@@ -119,8 +119,9 @@ WORDFORMS = ToolSpec(
         "tags plus the paradigm's available features.  For verbs, the default "
         "shows only indicative present forms; use `features` to request "
         "specific categories.\n\n"
-        "Note: 3rd-person verb forms carry no Sg/Pl distinction — request them "
-        "with P3 alone (e.g. \"Ind+Pres+P3\", never \"...+P3+Sg\")."
+        "Finite verb person tags: Sg1, Sg2, Pl1, Pl2 and SP3 — the 3rd person "
+        "carries no Sg/Pl distinction (e.g. \"Ind+Prs+Sg1\", \"Ind+Prs+SP3\", "
+        "never \"...+P3+Sg\")."
     ),
     args={
         "lemma": "Prussian base form (from lookup_prussian_word).",
@@ -128,7 +129,7 @@ WORDFORMS = ToolSpec(
             "optional comma-separated feature filter.  Accepts human-readable "
             "names (participle, conjunctive, optative, present, preterite, "
             "infinitive, adverb) or raw FST tags (PrfPrc+Pss, Gen+Pl, "
-            "Ind+Pres+P1, Ind+Pres+P3)."
+            "Ind+Prs+Sg1, Ind+Prs+SP3)."
         ),
     },
 )

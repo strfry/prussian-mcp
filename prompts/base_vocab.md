@@ -1,7 +1,7 @@
 BASE VOCABULARY (engine-verified — do NOT call search_dictionary or
 get_word_forms for anything listed here; the forms below are exact):
 
-Personal pronouns (Nom / Gen / Dat / Akk):
+Personal pronouns (Nom / Gen / Dat / Acc):
 
 - 1sg: as / māise / mennei / men          1pl: mes / nūse / nūmans / mans
 - 2sg: tū / twāise / tebbei / ten         2pl: jūs / jūse / jūmans / wans
@@ -20,43 +20,43 @@ būtwei "to be", indicative present:
 
 stas "that; der/die/das" (demonstrative):
 
-- Nom: stas (Sg+Masc), stāi (Sg+Fem; Pl+Masc/Neut), stās (Pl+Fem),
-  sta/stan (Sg+Neut)
-- Gen: stesse (Sg+Masc/Neut), stesses (Sg+Fem), stēisan (Pl, all genders)
-- Dat: stesmu (Sg+Masc/Neut), stessei (Sg+Fem), stēimans (Pl, all genders)
-- Akk: stan (Sg, all genders), stans (Pl, all genders)
+- Nom: stas (Sg+Msc), stāi (Sg+Fem; Pl+Msc/Neu), stās (Pl+Fem),
+  sta/stan (Sg+Neu)
+- Gen: stesse (Sg+Msc/Neu), stesses (Sg+Fem), stēisan (Pl, all genders)
+- Dat: stesmu (Sg+Msc/Neu), stessei (Sg+Fem), stēimans (Pl, all genders)
+- Acc: stan (Sg, all genders), stans (Pl, all genders)
 
 šis "this; dieser":
 
-- Nom: šis (Sg+Masc), šī (Sg+Fem), šin (Sg+Neut), šāi (Pl+Masc/Neut),
+- Nom: šis (Sg+Msc), šī (Sg+Fem), šin (Sg+Neu), šāi (Pl+Msc/Neu),
   šās (Pl+Fem)
-- Gen: šisse (Sg+Masc/Neut), šisses (Sg+Fem), šēisan (Pl)
-- Dat: šismu (Sg+Masc/Neut), šissei (Sg+Fem), šēimans (Pl)
-- Akk: šin (Sg+Masc/Neut), šan (Sg+Fem), šins (Pl+Masc/Neut), šans (Pl+Fem)
+- Gen: šisse (Sg+Msc/Neu), šisses (Sg+Fem), šēisan (Pl)
+- Dat: šismu (Sg+Msc/Neu), šissei (Sg+Fem), šēimans (Pl)
+- Acc: šin (Sg+Msc/Neu), šan (Sg+Fem), šins (Pl+Msc/Neu), šans (Pl+Fem)
 
 aīns "one" (numeral):
 
-- Nom: aīns (Sg+Masc), ainā (Sg+Fem), aīnan (Sg+Neut)
-- Gen: ainasse (Sg+Masc), ainasses (Sg+Fem)
-- Dat: ainasmu (Sg+Masc), ainassei (Sg+Fem)
-- Akk: aīnan (Sg, all genders)
+- Nom: aīns (Sg+Msc), ainā (Sg+Fem), aīnan (Sg+Neu)
+- Gen: ainasse (Sg+Msc), ainasses (Sg+Fem)
+- Dat: ainasmu (Sg+Msc), ainassei (Sg+Fem)
+- Acc: aīnan (Sg, all genders)
 - German indefinite article "ein/eine" is normally NOT translated;
   use aīns only when it means the numeral "one".
 
-Question/relative pronoun: kas (wer; der/die rel., Nom+Sg+Masc) — for
+Question/relative pronoun: kas (wer; der/die rel., Nom+Sg+Msc) — for
 other cases call get_word_forms("kas", …).
 
 Prepositions with government (case is fixed — never guess):
 
-- ēn + Akk (in — direction) / + Dat (in — location)
-- sēn + Akk (mit)
-- prēi + Akk (zu, bei, an)
-- iz + Akk (aus, von)
-- pēr + Akk (für)
-- nō + Akk (auf)
-- pa + Dat (unter) / + Akk (nach, gemäß)
-- kīrsa + Akk (über, quer über)
-- be + Akk (ohne); also sklāit (außer, ohne)
+- ēn + Acc (in — direction) / + Dat (in — location)
+- sēn + Acc (mit)
+- prēi + Acc (zu, bei, an)
+- iz + Acc (aus, von)
+- pēr + Acc (für)
+- nō + Acc (auf)
+- pa + Dat (unter) / + Acc (nach, gemäß)
+- kīrsa + Acc (über, quer über)
+- be + Acc (ohne); also sklāit (außer, ohne)
 
 Particles and conjunctions:
 

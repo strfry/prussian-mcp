@@ -32,8 +32,8 @@ b) Determine its syntactic role (subject / object / attribute /
 c) Derive the case from role + government (preposition/verb); take
    gender and number from the head noun.
 d) Fetch the EXACT form with get_word_forms using the features
-   parameter with FST tags, e.g. features="Akk+Pl+Masc",
-   "Nom+Sg+Fem", "Gen+Pl", "Ind+Pres". Do not pick a form
+   parameter with FST tags, e.g. features="Acc+Pl+Msc",
+   "Nom+Sg+Fem", "Gen+Pl", "Ind+Prs". Do not pick a form
    freehand from the table.
 
 BEFORE the final answer: run a short agreement self-check — verify
@@ -65,19 +65,20 @@ he/she answers in Prussian".
 
 FST TAG LEGEND (used by get_word_forms features and lookup output):
 
-POS: N (noun), Adj (adjective), V (verb), Part (participle), Pron
-(pronoun), Adv (adverb), Prp (preposition), Num (numeral)
-Mood: Ind (indicative), Opt (optative), Imp (imperative), Subj
+POS: N (noun), A (adjective), V (verb), Pron (pronoun), Adv
+(adverb), Pr (preposition), Num (numeral), CC/CS (conjunction), Pcle
+(particle)
+Mood: Ind (indicative), Opt (optative), Imprt (imperative), Subj
 (subjunctive), Rel (relative)
-Tense: Pres (present), Pret (preterite), Inf (infinitive)
+Tense: Prs (present), Prt (preterite), Inf (infinitive)
+Participle: PrsPrc (present), PrfPrc (perfect); voice Act / Pss
 Case: Nom, Gen, Dat, Acc
 Number: Sg, Pl
-Gender: Masc, Fem, Neut
-Person: P1, P2, P3
-Other: Pass (passive), Refl (reflexive), Cmp (comparative), Sup
-(superlative)
+Gender: Msc, Fem, Neu
+Person (finite verbs): Sg1, Sg2, Pl1, Pl2, SP3 (3rd person, no Sg/Pl)
+Other: Refl (reflexive), Comp (comparative), Superl (superlative)
 
-Tags are joined with ``+`` (e.g. ``V+Ind+Pres+P3+Sg``).  The
+Tags are joined with ``+`` (e.g. ``V+Ind+Prs+SP3``).  The
 ``features`` parameter accepts these tags or human-readable names
 (e.g. ``participle``, ``Gen+Pl``).
 
@@ -87,7 +88,7 @@ TOOL ROLES — read carefully, do not confuse them:
   sentences). The tool tokenizes, FST-analyzes each token (producing
   lemma + tags), and enriches results with dictionary translations.
   Use this to look up all words in a sentence at once. Each token's
-  output includes FST analyses with tags (e.g. "V+Ind+Pres+P3+Sg").
+  output includes FST analyses with tags (e.g. "V+Ind+Prs+SP3").
   Tokens not found in the FST fall back to dictionary lookup.
 - get_word_forms(lemma, features=...) — input is a PRUSSIAN LEMMA (the
   base form returned by lookup_prussian_word, e.g. "lāuksnā", NOT the
@@ -104,7 +105,7 @@ TOOL ROLES — read carefully, do not confuse them:
   retrying the same word. Do not add meta-words like "Prussian" or
   grammatical descriptions ("feminine accusative") — they hurt the
   match; grammar is handled by get_word_forms, not the query.
-  Optional filter_tags (e.g. "Akk+Sg") restricts results to forms
+  Optional filter_tags (e.g. "Acc+Sg") restricts results to forms
   matching those FST tags.
 - validate_prussian(text) — grammar + agreement check of a Prussian
   sentence via the FST/CG3 pipeline.
