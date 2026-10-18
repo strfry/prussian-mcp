@@ -1,12 +1,14 @@
 """FST-based tag analysis, tag matching, and form extraction.
 
-Guarded import pattern (fsg_check.py): the server starts without FST;
-the tools fall back to dictionary-only mode and emit a warning.
+Guarded import pattern (fsg_check.py): the server starts without FST, but
+the FST tools then answer with an error (:func:`fst_error_message`) — there
+is no dictionary-only fallback that would hide a missing FST.
 """
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 # Guarded Import
@@ -42,8 +44,6 @@ except ImportError:
 try:
     from prussian_fst.cg3_pipeline import DEFAULT_FST, DEFAULT_FST_GEN, DEFAULT_LENIENT
 except ImportError:
-    from pathlib import Path
-
     _FST_DIR = Path(__file__).resolve().parents[2] / "prussian-fst" / "fst"
     DEFAULT_FST = _FST_DIR / "build/base.hfstol"
     DEFAULT_LENIENT = _FST_DIR / "build/lenient.hfstol"
@@ -51,14 +51,25 @@ except ImportError:
 
 
 
+def _missing_artifacts() -> list[str]:
+    return [str(p) for p in (DEFAULT_FST, DEFAULT_LENIENT, DEFAULT_FST_GEN)
+            if not Path(p).exists()]
+
+
 def fst_available() -> bool:
-    """True if the FST pipeline is importable."""
-    return fst_api is not None
+    """True if the FST pipeline is importable and analyzer/generator exist."""
+    return fst_api is not None and not _missing_artifacts()
 
 
 def fst_error_message() -> str:
     """Human-readable message when FST is not available."""
-    return _IMPORT_ERROR or ""
+    if _IMPORT_ERROR:
+        return _IMPORT_ERROR
+    missing = _missing_artifacts()
+    if missing:
+        return (f"{', '.join(missing)} fehlt — im prussian-fst-Checkout "
+                "`make all` ausführen")
+    return ""
 
 
 # ── Feature name mapping (human-readable → FST tag) ──────────────────────────
@@ -336,3 +347,27 @@ def generate_paradigm(entry: dict) -> list[dict]:
     return [{"form": surface, "tags": [cell]}
             for cell, q in queries.items()
             for surface in generated.get(q, [])]
+
+
+def paradigm_gap(word: str) -> str:
+    """Why :func:`generate_paradigm` is empty although the FST knows *word*.
+
+    ``""`` when the analyzer has no reading with *word* as its own lemma
+    (a coverage gap, or *word* is an inflected form).  Otherwise the FST
+    side that failed: no paradigm cells for the readings, or a generator
+    that produces none of them (out of sync with the analyzer).
+    """
+    from prussian.engine.fst.paradigm_order import paradigm_cells
+
+    if fst_api is None or not word:
+        return ""
+    analyses = fst_api.tags([word]).get(word, {}).get("analyses", [])
+    readings = [tuple(tags) for lemma, tags in analyses if lemma == word]
+    if not readings:
+        return ""
+    shown = ", ".join("+".join(r) for r in readings[:3])
+    cells = paradigm_cells(readings)
+    if not cells:
+        return f"FST analyzes {word} as {shown}, but paradigm_order defines no cells for it"
+    return (f"FST analyzes {word} as {shown}, but {DEFAULT_FST_GEN.name} generates "
+            f"none of its {len(cells)} cells — generator out of sync with the analyzer?")

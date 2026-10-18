@@ -42,10 +42,15 @@ def wordforms_tool(
     """
     from prussian.engine.fst.tags import (
         fst_available,
+        fst_error_message,
         resolve_features,
         match_tags,
         generate_paradigm,
+        paradigm_gap,
     )
+
+    if not fst_available():
+        return f"error: FST not available: {fst_error_message()}"
 
     word_lower = lemma.lower().strip()
     if word_lower not in engine.word_to_entry:
@@ -77,7 +82,7 @@ def wordforms_tool(
     form_of: str | None = None
 
     for entry in entries:
-        fw = generate_paradigm(entry) if fst_available() else []
+        fw = generate_paradigm(entry)
         cells = [f["tags"][0] for f in fw if f.get("tags")]
 
         # Detect POS from tag inventory
@@ -108,9 +113,13 @@ def wordforms_tool(
             "feature_groups": groups,
         }
         if not fw:
-            if form_of is None:
-                form_of = _form_of(entry.get("word", "")) if fst_available() else ""
-            entry_out["note"] = form_of or "no paradigm (outside FST coverage)"
+            gap = paradigm_gap(entry.get("word", ""))
+            if gap:
+                entry_out["note"] = f"FST error: {gap}"
+            else:
+                if form_of is None:
+                    form_of = _form_of(entry.get("word", ""))
+                entry_out["note"] = form_of or "no paradigm (outside FST coverage)"
         elif wanted_tags is not None and not filtered:
             entry_out["note"] = _diagnose(cells, wanted_tags, inherent)
         results.append(entry_out)
