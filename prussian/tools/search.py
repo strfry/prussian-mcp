@@ -98,7 +98,12 @@ def _format(results: list[dict[str, Any]]) -> str:
 
         for e in entries:
             word = e.get("word", "")
-            mark = "  ← best for context" if best and word == best else ""
+            marks = []
+            if e.get("exact"):
+                marks.append("exact match")
+            if best and word == best:
+                marks.append("best for context")
+            mark = f"  ← {', '.join(marks)}" if marks else ""
             out.append(f"{prefix}{head(word, e.get('gender', ''))}{mark}")
             out.extend(translations(e.get("translations", {}), indent))
             for f in filtered.get(word, []):

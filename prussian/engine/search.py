@@ -1,5 +1,6 @@
 """Search engine for Prussian Dictionary using embeddings."""
 
+import re
 import sys
 import numpy as np
 from pathlib import Path
@@ -100,9 +101,64 @@ class SearchEngine:
                     if pgr not in self.form_to_pgr[form_lower]:
                         self.form_to_pgr[form_lower].append(pgr)
 
+        # Exact-translation index (all six languages) → lemmas, plus
+        # lemma → chunk indices, so a literal match can be pinned on top of
+        # the fuzzy BM25/dense ranking (see ``query``).
+        self.translation_to_lemmas: Dict[str, Dict[str, int]] = {}
+        for entry in self.entries:
+            lemma = entry.get("word", "").lower()
+            tr = entry.get("translations")
+            if not lemma or not isinstance(tr, dict):
+                continue
+            for vals in tr.values():
+                for val in ([vals] if isinstance(vals, str) else vals or []):
+                    for key, tier in self._translation_keys(val).items():
+                        tiers = self.translation_to_lemmas.setdefault(key, {})
+                        tiers[lemma] = min(tier, tiers.get(lemma, tier))
+        self.lemma_to_chunks: Dict[str, List[int]] = {}
+        for idx, rec in enumerate(self.store.records):
+            for m in rec.get("members", []):
+                self.lemma_to_chunks.setdefault(m.lower(), []).append(idx)
+
         print(
             f"Indexed {len(self.word_to_entry)} lemmas and {len(self.form_to_lemma)} forms"
         )
+
+    @staticmethod
+    def _translation_keys(text: str) -> Dict[str, int]:
+        """Normalized match keys for a translation or query string → tier.
+
+        Lowercased and split on ``,``/``;``.  Tier 0 is the part as written;
+        tier 1 drops parentheticals (``to sink (go down)`` → ``to sink``) and
+        an English ``to `` infinitive marker (``to go`` ≡ ``go``).
+        """
+        keys: Dict[str, int] = {}
+
+        def add(part: str, tier: int) -> None:
+            part = " ".join(part.split())
+            if part and tier < keys.get(part, 2):
+                keys[part] = tier
+
+        for part in re.split(r"[,;]", text.lower()):
+            add(part, 0)
+            bare = re.sub(r"\([^)]*\)", " ", part)
+            add(bare, 1)
+            bare = " ".join(bare.split())
+            if bare.startswith("to ") and len(bare) > 3:
+                add(bare[3:], 1)
+        return keys
+
+    def _exact_lemmas(self, query: str) -> List[str]:
+        """Lemmas with a translation literally equal to ``query``, best first.
+
+        Tier sums rank a match on the full translation text above one that
+        only matches after dropping parentheticals or ``to ``.
+        """
+        best: Dict[str, int] = {}
+        for key, q_tier in self._translation_keys(query).items():
+            for lemma, t_tier in self.translation_to_lemmas.get(key, {}).items():
+                best[lemma] = min(q_tier + t_tier, best.get(lemma, 9))
+        return sorted(best, key=lambda lemma: best[lemma])
 
     def _exact_lookup(self, word: str) -> list:
         """Look up a word exactly in lemma and form indices.
@@ -233,6 +289,10 @@ class SearchEngine:
         """
         Semantic search over the chunk store (BM25+dense RRF or dense-only).
 
+        Chunks containing a lemma whose translation literally equals the
+        query (any language) come first; their matching entries carry
+        ``exact: True``.  The fuzzy ranking fills the remaining slots.
+
         Args:
             query: Search query (German/English text)
             top_k: Number of results to return
@@ -243,18 +303,31 @@ class SearchEngine:
         if self.store is None:
             return []
 
+        exact_lemmas = self._exact_lemmas(query)
+        exact = set(exact_lemmas)
+        pinned: List[int] = []
+        for lemma in exact_lemmas:
+            for idx in self.lemma_to_chunks.get(lemma, []):
+                if idx not in pinned:
+                    pinned.append(idx)
+        pinned_recs = [self.store.records[i] for i in pinned]
+        pinned_ids = {id(r) for r in pinned_recs}
+
         if self.bm25 is not None:
             hits = hybrid_query(self.store, self.embedder, self.bm25, query,
                                 k=top_k, query_prefix=QUERY_PREFIX)
         else:
             hits = self.store.query(self.embedder, query,
                                     k=top_k, query_prefix=QUERY_PREFIX)
+        hits = ([(r, 1.0) for r in pinned_recs]
+                + [(r, s) for r, s in hits if id(r) not in pinned_ids])[:top_k]
 
         results = []
         for record, score in hits:
             members = record.get("members", [])
             entries = [
-                {"word": e["word"], "translations": e.get("translations", {})}
+                {"word": e["word"], "translations": e.get("translations", {}),
+                 **({"exact": True} if e["word"].lower() in exact else {})}
                 for m in members
                 for e in self.word_to_entry.get(m.lower(), [])
             ]

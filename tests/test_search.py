@@ -97,5 +97,27 @@ class TestHybridToggle(unittest.TestCase):
         engine.bm25.query.assert_called()
 
 
+class TestExactMatch(unittest.TestCase):
+    def test_exact_pinned_within_top_k(self):
+        engine = _make_engine(hybrid=False)
+        results = engine.query("Gott", top_k=2)
+        self.assertEqual([c["lemma"] for c in results], ["dēiws", "bērzi"])
+        self.assertTrue(results[0]["entries"][0].get("exact"))
+        self.assertNotIn("exact", results[1]["entries"][0])
+
+    def test_no_substring_match(self):
+        engine = _make_engine(hybrid=False)
+        for q in ("Got", "Gottheit", "Birke Gott"):
+            results = engine.query(q, top_k=3)
+            self.assertFalse(any(e.get("exact")
+                                 for c in results for e in c["entries"]), q)
+
+    def test_translation_keys(self):
+        from prussian.engine.search import SearchEngine
+        keys = SearchEngine._translation_keys("to sink (go down); Senke")
+        self.assertEqual(keys, {"to sink (go down)": 0, "to sink": 1,
+                                "sink": 1, "senke": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

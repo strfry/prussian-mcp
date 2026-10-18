@@ -71,8 +71,10 @@ SEARCH = ToolSpec(
         "lookup_prussian_word instead.\n\n"
         "Returns numbered results; each is a lemma (or a cluster of related "
         "lemmas) with gender and its translations (de, en, lt, lv, pl, ru).  "
-        "With `context` set, the best-matching lemma of each top result is "
-        "marked \"← best for context\"."
+        "Lemmas whose translation literally equals the query come first, "
+        "marked \"← exact match\" — so a single word or short phrase in any of the six "
+        "languages works best.  With `context` set, the best-matching lemma "
+        "of each top result is marked \"← best for context\"."
     ),
     args={
         "query": (
