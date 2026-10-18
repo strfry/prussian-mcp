@@ -25,8 +25,8 @@ def translations(tr: Any, indent: str) -> list[str]:
     return [f"{indent}{' · '.join(parts[i:i + 2])}" for i in range(0, len(parts), 2)]
 
 
-def head(word: str, gender: str = "", extra: str = "") -> str:
-    """``berzi (f)`` plus optional trailing info."""
-    g = _GENDER.get(gender, gender)
-    out = f"{word} ({g})" if g else word
+def head(word: str, gender: str = "", extra: str = "", pos: str = "") -> str:
+    """``berzi (noun, f)`` plus optional trailing info."""
+    info = ", ".join(x for x in (pos, _GENDER.get(gender, gender)) if x)
+    out = f"{word} ({info})" if info else word
     return f"{out}  {extra}" if extra else out

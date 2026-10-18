@@ -189,6 +189,7 @@ class SearchEngine:
                 {"id": entry_id, "word": e["word"],
                  "translations": e.get("translations", {}),
                  "gender": e.get("gender", ""),
+                 "pos": e.get("pos", ""),
                  **({"exact": True} if entry_id in exact else {})}
                 for entry_id in self._record_ids(record)
                 if (e := self.id_to_entry.get(entry_id))

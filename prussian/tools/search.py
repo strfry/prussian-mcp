@@ -84,7 +84,7 @@ def _format(results: list[dict[str, Any]]) -> str:
             if best and word == best:
                 marks.append("best for context")
             mark = f"  ← {', '.join(marks)}" if marks else ""
-            out.append(f"{prefix}{head(word, e.get('gender', ''))}{mark}")
+            out.append(f"{prefix}{head(word, e.get('gender', ''), pos=e.get('pos', ''))}{mark}")
             out.extend(translations(e.get("translations", {}), indent))
         if rest:
             out.append(f"  - also in family: {', '.join(e.get('word', '') for e in rest)}")
