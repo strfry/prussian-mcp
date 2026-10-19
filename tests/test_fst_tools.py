@@ -221,6 +221,53 @@ class TestGenerateParadigm(unittest.TestCase):
         from prussian.engine.fst.tags import generate_paradigm
         self.assertEqual(generate_paradigm({"word": "xyzzy"}), [])
 
+    def test_reflexive_entry_gets_refl_cells_with_particle(self):
+        from prussian.engine.fst.tags import generate_paradigm
+        forms = {(f["form"], f["tags"][0])
+                 for f in generate_paradigm({"word": "laikātun si"})}
+        self.assertIn(("lāika si", "V+Ind+Prs+SP3+Refl"), forms)
+        self.assertIn(("laikāsei si", "V+Opt+SP3+Refl"), forms)
+        self.assertTrue(all("Refl" in t and f.endswith(" si") for f, t in forms))
+
+    def test_bare_verb_has_no_refl_cells(self):
+        from prussian.engine.fst.tags import generate_paradigm
+        forms = {(f["form"], f["tags"][0])
+                 for f in generate_paradigm({"word": "laikātun"})}
+        self.assertIn(("lāika", "V+Ind+Prs+SP3"), forms)
+        self.assertFalse(any("Refl" in t for _, t in forms))
+
+
+class TestReflexiveHeadword(unittest.TestCase):
+    """Headword ↔ (FST lemma, Refl) mapping (pure logic)."""
+
+    def test_split_refl(self):
+        from prussian.engine.fst.tags import split_refl
+        self.assertEqual(split_refl("laikātun si"), ("laikātun", True))
+        self.assertEqual(split_refl("laikātun"), ("laikātun", False))
+
+    def test_entry_lemma(self):
+        from prussian.engine.fst.tags import entry_lemma
+        self.assertEqual(entry_lemma("laikātun", ["V", "Ind", "Refl"]), "laikātun si")
+        self.assertEqual(entry_lemma("laikātun", ["V", "Ind"]), "laikātun")
+
+
+@unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
+class TestLookupReflexive(unittest.TestCase):
+    def test_refl_readings_go_to_the_si_entry(self):
+        from types import SimpleNamespace
+        from prussian.tools.lookup import lookup_tool
+        engine = SimpleNamespace(word_to_entry={
+            "laikātun": [{"word": "laikātun", "translations": {"de": ["halten"]}}],
+            "laikātun si": [{"word": "laikātun si",
+                             "translations": {"de": ["sich benehmen"]}}],
+        })
+        lines = lookup_tool(engine, "lāika si").splitlines()
+        heads = {tuple(l.split()[:2]): l for l in lines if l.startswith("  laikātun")}
+        refl = heads[("laikātun", "si")]
+        bare = next(l for k, l in heads.items() if k[1] != "si")
+        self.assertIn("V+Ind+Prs+SP3+Refl", refl)
+        self.assertNotIn("Refl", bare)
+
 
 @unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
 class TestValidateBattery(unittest.TestCase):

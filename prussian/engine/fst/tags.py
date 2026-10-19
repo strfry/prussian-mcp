@@ -291,6 +291,9 @@ def analyze_words(
 def lemma_tags(word: str, *, macron: bool = False) -> dict[str, list[str]]:
     """Strict FST analyses of one word, grouped by lemma: ``{lemma: [tags]}``.
 
+    Reflexive readings are grouped under the dictionary headword
+    (``laikātun si``, see :func:`entry_lemma`).
+
     The dictionary lookup's form index: surface/lowercase/titlecase/short-prep
     stages of :func:`analyze_words`, never the lenient layer (the lookup's own
     prefix/ortho rules play that role).  ``macron=True`` analyzes with
@@ -313,12 +316,38 @@ def lemma_tags(word: str, *, macron: bool = False) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for lemma, tags in analyses:
         tag = "+".join(tags)
-        if tag not in out.setdefault(lemma, []):
-            out[lemma].append(tag)
+        group = out.setdefault(entry_lemma(lemma, tags), [])
+        if tag not in group:
+            group.append(tag)
     return out
 
 
 # ── Paradigm generation: lemma → FST-generated forms ─────────────────────────
+
+
+def split_refl(word: str) -> tuple[str, bool]:
+    """``"laikātun si"`` → ``("laikātun", True)``.
+
+    Reflexive entries carry the particle in the headword; the FST analyzes the
+    bare verb with ``+Refl`` on every cell (``lāika`` → ``laikātun+…+Refl``).
+    """
+    if word.endswith(" si"):
+        return word[:-3], True
+    return word, False
+
+
+def entry_lemma(lemma: str, tags) -> str:
+    """Dictionary headword of an FST reading: ``+Refl`` → ``"<lemma> si"``."""
+    return f"{lemma} si" if "Refl" in tags else lemma
+
+
+def _own_readings(word: str) -> list[tuple[str, ...]]:
+    """FST readings of *word* as its own lemma — for ``… si`` only the
+    ``+Refl`` ones, for the bare verb only those without."""
+    base, refl = split_refl(word)
+    analyses = fst_api.tags([base]).get(base, {}).get("analyses", [])
+    return [tuple(tags) for lemma, tags in analyses
+            if lemma == base and ("Refl" in tags) == refl]
 
 
 def generate_paradigm(entry: dict) -> list[dict]:
@@ -327,7 +356,8 @@ def generate_paradigm(entry: dict) -> list[dict]:
     The lemma's own analyses give word class, gender and reflexivity;
     :func:`paradigm_cells` enumerates the plausible cells and the generator
     (``base.gen.hfstol``) keeps those that exist.  Lemmas outside FST
-    coverage yield no forms.
+    coverage yield no forms.  A reflexive entry (``laikātun si``) shows
+    every form with the particle, as in the dictionary (``lāika si``).
 
     Returns ``[{"form": str, "tags": [str]}, ...]`` in paradigm order, one
     item per (cell, surface form).
@@ -337,14 +367,14 @@ def generate_paradigm(entry: dict) -> list[dict]:
     word = entry.get("word", "")
     if fst_api is None or not word:
         return []
-    analyses = fst_api.tags([word]).get(word, {}).get("analyses", [])
-    readings = [tuple(tags) for lemma, tags in analyses if lemma == word]
-    cells = paradigm_cells(readings)
+    base, refl = split_refl(word)
+    cells = paradigm_cells(_own_readings(word))
     if not cells:
         return []
-    queries = {c: f"{word}+{c}" for c in cells}
+    queries = {c: f"{base}+{c}" for c in cells}
     generated = fst_api.generate(list(queries.values()), fst_path=DEFAULT_FST_GEN)
-    return [{"form": surface, "tags": [cell]}
+    particle = " si" if refl else ""
+    return [{"form": surface + particle, "tags": [cell]}
             for cell, q in queries.items()
             for surface in generated.get(q, [])]
 
@@ -361,8 +391,7 @@ def paradigm_gap(word: str) -> str:
 
     if fst_api is None or not word:
         return ""
-    analyses = fst_api.tags([word]).get(word, {}).get("analyses", [])
-    readings = [tuple(tags) for lemma, tags in analyses if lemma == word]
+    readings = _own_readings(word)
     if not readings:
         return ""
     shown = ", ".join("+".join(r) for r in readings[:3])

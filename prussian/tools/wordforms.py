@@ -275,10 +275,11 @@ def _diagnose(cells: list[str], wanted: list[str], inherent: list[str]) -> str:
 
 def _form_of(word: str) -> str:
     """``stāi is a form of stas (Pron+Fem+Sg+Nom, …)`` — or ``""``."""
-    from prussian.engine.fst.tags import lemma_tags
+    from prussian.engine.fst.tags import lemma_tags, split_refl
 
-    others = {lemma: tags for lemma, tags in lemma_tags(word).items()
-              if lemma.lower() != word.lower()}
+    base, refl = split_refl(word)
+    others = {lemma: tags for lemma, tags in lemma_tags(base).items()
+              if lemma.lower() != word.lower() and split_refl(lemma)[1] == refl}
     if not others:
         return ""
     parts = [f"{lemma} ({', '.join(tags[:3])}{', …' if len(tags) > 3 else ''})"

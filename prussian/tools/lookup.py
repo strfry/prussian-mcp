@@ -17,7 +17,8 @@ def lookup_tool(
 
     Each token is analyzed via the FST cascade (surface → lowercase →
     titlecase → short_prep → lenient).  Analyses are grouped by lemma
-    and enriched with translations and desc from the dictionary.  A token
+    (``+Refl`` readings under the reflexive entry ``… si``) and enriched
+    with translations and desc from the dictionary.  A token
     without FST analysis is reported as such — there is no dictionary
     fallback, so FST coverage gaps stay visible.
 
@@ -30,7 +31,7 @@ def lookup_tool(
         translations in all six languages.
     """
     from prussian.engine.fst.tags import (
-        analyze_words, fst_available, fst_error_message, tokenize,
+        analyze_words, entry_lemma, fst_available, fst_error_message, tokenize,
     )
 
     if not fst_available():
@@ -53,10 +54,13 @@ def lookup_tool(
         matched_form = info.get("matched_form")
 
         if fst_analyses:
-            # Group by lemma
+            # Group by dictionary headword: +Refl readings belong to the
+            # reflexive entry (laikātun si), the rest to the bare verb.
             lemma_groups: dict[str, list[dict[str, Any]]] = {}
+            bare_of: dict[str, str] = {}
             for lemma, tags in fst_analyses:
-                key = lemma.lower()
+                key = entry_lemma(lemma, tags).lower()
+                bare_of[key] = lemma.lower()
                 if key not in lemma_groups:
                     lemma_groups[key] = []
                 lemma_groups[key].append({
@@ -65,7 +69,8 @@ def lookup_tool(
 
             analyses_out: list[dict[str, Any]] = []
             for lemma_lower, tag_list in lemma_groups.items():
-                entries = engine.word_to_entry.get(lemma_lower, [])
+                entries = (engine.word_to_entry.get(lemma_lower)
+                           or engine.word_to_entry.get(bare_of[lemma_lower], []))
                 if entries:
                     for entry in entries:
                         a: dict[str, Any] = {
