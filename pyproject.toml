@@ -26,6 +26,11 @@ remote = []
 distill = ["model2vec[distill]>=0.3.0", "torch>=2.10"]
 # inspect-ai reconstruction eval (evals/ + prussian.adapters.inspect_tools).
 eval = ["inspect-ai"]
+dipmt = [
+    "eflomal>=2.0.0",
+    "nltk>=3.10.4",
+    "simplemma>=2.0.0",
+]
 
 [project.scripts]
 prussian-agent = "prussian.adapters.agent.cli:main"

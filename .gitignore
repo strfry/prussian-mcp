@@ -21,3 +21,6 @@ env.*.sh
 
 # codemap tool runtime state
 .codemap/
+
+# DiPMT++ lexicon (generated: uv run python -m prussian.dipmt.align)
+data/dipmt/
