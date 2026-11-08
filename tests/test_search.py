@@ -134,7 +134,13 @@ class TestExactMatch(unittest.TestCase):
         from prussian.engine.search import SearchEngine
         keys = SearchEngine._translation_keys("to sink (go down); Senke")
         self.assertEqual(keys, {"to sink (go down)": 0, "to sink": 1,
-                                "senke": 0})
+                                "go down": 2, "senke": 0})
+
+    def test_translation_keys_comma_inside_parentheses(self):
+        from prussian.engine.search import SearchEngine
+        keys = SearchEngine._translation_keys("Häuschen (Amts-, Bahnwärter-)")
+        self.assertEqual(keys, {"häuschen (amts-, bahnwärter-)": 0,
+                                "häuschen": 1, "amts-": 2, "bahnwärter-": 2})
 
 
 def _homograph_engine():

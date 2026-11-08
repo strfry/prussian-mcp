@@ -116,19 +116,24 @@ class SearchEngine:
     def _translation_keys(text: str) -> Dict[str, int]:
         """Normalized match keys for a translation or query string → tier.
 
-        Lowercased and split on ``,``/``;``.  Tier 0 is the part as written;
-        tier 1 drops parentheticals (``to sink (go down)`` → ``to sink``).
+        Lowercased and split on ``,``/``;`` outside parentheses.  Tier 0 is
+        the part as written; tier 1 drops parentheticals (``to sink (go
+        down)`` → ``to sink``); tier 2 is each parenthetical on its own
+        (``go down``), so ``box (cabin)`` is found by ``cabin``.
         """
         keys: Dict[str, int] = {}
 
         def add(part: str, tier: int) -> None:
             part = " ".join(part.split())
-            if part and tier < keys.get(part, 2):
+            if part and tier < keys.get(part, 3):
                 keys[part] = tier
 
-        for part in re.split(r"[,;]", text.lower()):
+        for part in re.split(r"[,;](?![^()]*\))", text.lower()):
             add(part, 0)
             add(re.sub(r"\([^)]*\)", " ", part), 1)
+            for inner in re.findall(r"\(([^)]*)\)", part):
+                for sub in re.split(r"[,;]", inner):
+                    add(sub, 2)
         return keys
 
     def _exact_lemmas(self, query: str) -> List[str]:
