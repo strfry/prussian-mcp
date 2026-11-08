@@ -201,6 +201,23 @@ class TestFeatureGroups(unittest.TestCase):
         self.assertEqual(self.wf._diagnose(cells, ["Ind", "Prs", "Sg"], []),
                          "Sg does not combine with Ind+Prs (finite, 2 forms)")
 
+    def test_diagnose_pss_with_finite_points_to_prt(self):
+        cells = ["V+Ind+Prs+Sg1", "V+Ind+Prt+Sg1", "V+PrfPrc+Pss+Msc+Sg+Nom"]
+        msg = self.wf._diagnose(cells, ["Ind", "Pss", "Sg1"], [])
+        self.assertIn("Pss does not combine with Ind+Sg1", msg)
+        self.assertIn("for the past tense use Prt (preterite)", msg)
+
+    def test_participle_table_one_row_per_gender_number(self):
+        fw = [{"form": f"{g}{n}{c}", "tags": [f"V+PrfPrc+Pss+{g}+{n}+{c}+Refl"]}
+              for g in ("Msc", "Fem") for n in ("Sg", "Pl") for c in ("Nom", "Acc")]
+        self.assertEqual(self.wf._participle_table(fw, ["Refl"]), [
+            "  PrfPrc+Pss  Nom·Acc",
+            "    Msc Sg: MscSgNom · MscSgAcc",
+            "    Msc Pl: MscPlNom · MscPlAcc",
+            "    Fem Sg: FemSgNom · FemSgAcc",
+            "    Fem Pl: FemPlNom · FemPlAcc",
+        ])
+
 
 @unittest.skipIf(not FST_READY, "prussian-fst-Artefakte nicht gebaut")
 class TestGenerateParadigm(unittest.TestCase):

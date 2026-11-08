@@ -103,6 +103,18 @@ def wordforms_tool(
         else:
             filtered = fw
 
+        # A participle request without a case gets the nominatives only —
+        # what the periphrastic tenses need (as bēi izmīrsuns); the full
+        # 24-cell declension is one case tag away.
+        nom_only = (
+            wanted_tags is not None
+            and not set(wanted_tags) & _CASES
+            and filtered
+            and all(_is_participle(f) for f in filtered)
+        )
+        if nom_only:
+            filtered = [f for f in filtered if "Nom" in f["tags"][0].split("+")]
+
         inherent, groups = _feature_groups(fw)
         entry_out: dict[str, Any] = {
             "lemma": entry.get("word", ""),
@@ -122,6 +134,10 @@ def wordforms_tool(
                 entry_out["note"] = form_of or "no paradigm (outside FST coverage)"
         elif wanted_tags is not None and not filtered:
             entry_out["note"] = _diagnose(cells, wanted_tags, inherent)
+        elif nom_only:
+            entry_out["note"] = ("nominative only — participles decline like "
+                                 "adjectives; add a case (e.g. +Acc) for the "
+                                 "other forms")
         results.append(entry_out)
 
     return _format(results)
@@ -270,6 +286,10 @@ def _diagnose(cells: list[str], wanted: list[str], inherent: list[str]) -> str:
         pos = h[0].split("+")[0]
         label = _label(tuple(x for x in h[0].split("+") if x not in _DIM_OF), pos)
         out.append(f"{t} does not combine with {rest} ({label}, {len(h)} forms)")
+    if "Pss" in wanted and set(wanted) & _FINITE:
+        # Pss reads like "past"; models ask for Ind+Pss+Sg1 meaning the preterite.
+        out.append("Pss = passive (participles only); for the past tense use "
+                   "Prt (preterite), e.g. Ind+Prt+Sg1")
     return "; ".join(out)
 
 
@@ -295,9 +315,13 @@ def _format(results: list[dict[str, Any]]) -> str:
     for entry in results:
         desc = f"— {entry['desc']}" if entry.get("desc") else ""
         out.append(head(entry.get("lemma", "?"), entry.get("gender", ""), desc))
+        participles = [f for f in entry["forms"] if _is_participle(f)]
         for f in entry["forms"]:
+            if _is_participle(f):
+                continue
             tags = " | ".join(f["tags"])
             out.append(f"  {f['form']}: {tags}" if tags else f"  {f['form']}")
+        out.extend(_participle_table(participles, entry.get("inherent", [])))
         if not entry["forms"]:
             out.append("  (no forms)")
         if entry.get("note"):
@@ -309,6 +333,43 @@ def _format(results: list[dict[str, Any]]) -> str:
     return "\n".join(out)
 
 
+_CASES = {"Nom", "Gen", "Dat", "Acc"}
+_FINITE = {"Ind", "Subj", "Opt", "Imprt", "Sg1", "Sg2", "SP3", "Pl1", "Pl2"}
+
+
+def _is_participle(f: dict) -> bool:
+    return bool(f.get("tags")) and bool(set(f["tags"][0].split("+")) & _PARTICIPLES)
+
+
+def _participle_table(forms: list[dict], inherent: list[str]) -> list[str]:
+    """Participle forms as one row per frame+gender+number, cases in column
+    order — instead of one ``form: V+PrfPrc+Pss+Msc+Sg+Nom+Refl`` line per
+    cell (24 lines for a full declension)::
+
+        PrfPrc+Pss  Nom·Gen·Dat·Acc
+          Msc Sg: pagaūts · pagaūtas · pagaūtasmu · pagaūtan
+    """
+    if not forms:
+        return []
+    skip = {"V", *inherent}
+    rows: dict[tuple, dict[str, str]] = {}
+    for f in forms:
+        tags = [t for t in f["tags"][0].split("+") if t not in skip]
+        frame = "+".join(t for t in tags if t not in _DIM_OF)
+        slot = " ".join(t for t in tags if t in _DIM_OF and t not in _CASES)
+        case = next((t for t in tags if t in _CASES), "")
+        rows.setdefault((frame, slot), {})[case] = f["form"]
+    cases = [c for c in ("Nom", "Gen", "Dat", "Acc")
+             if any(c in cells for cells in rows.values())]
+    out: list[str] = []
+    for frame in dict.fromkeys(fr for fr, _ in rows):
+        out.append(f"  {frame}  {'·'.join(cases)}")
+        for (fr, slot), cells in rows.items():
+            if fr == frame:
+                out.append(f"    {slot}: " + " · ".join(cells.get(c, "—") for c in cases))
+    return out
+
+
 _FEATURE_NAME_MAP = {
     "participle": "PrfPrc",
     "present_participle": "PrsPrc",
@@ -318,6 +379,7 @@ _FEATURE_NAME_MAP = {
     "imperative": "Imprt",
     "present": "Prs",
     "preterite": "Prt",
+    "past": "Prt",
     "infinitive": "Inf",
     "passive": "Pss",
     "active": "Act",

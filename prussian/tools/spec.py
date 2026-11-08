@@ -125,7 +125,11 @@ WORDFORMS = ToolSpec(
         "Examples: verb \"Ind+Prt\", \"Ind+Prs+SP3\", \"PrfPrc+Pss+Fem+Sg+Nom\" "
         "(finite person: Sg1 Sg2 SP3 Pl1 Pl2) · noun \"Pl+Acc\" (gender is "
         "inherent) · adjective \"Fem+Sg+Acc\", \"Comp\", \"Adv\" · pronoun "
-        "\"Msc+Pl+Dat\"."
+        "\"Msc+Pl+Dat\".  Participles without a case return the nominatives "
+        "only; add a case for the rest.\n\n"
+        "Tags: Prs present · Prt preterite (past) · Pss passive · Act active · "
+        "PrsPrc / PrfPrc present / perfect participle · Subj subjunctive · "
+        "Opt optative · Imprt imperative."
     ),
     args={
         "lemma": "Prussian base form (from lookup_prussian_word).",
