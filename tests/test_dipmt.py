@@ -1,9 +1,12 @@
 """DiPMT++ lexicon: symmetrization, extraction, candidate ranking (offline)."""
 
 import unittest
+from collections import Counter
 
 from prussian.dipmt.align import extract, grow_diag_final_and
 from prussian.dipmt.corpus import Pair
+from prussian.dipmt.constructions import (Constructions, _variants,
+                                          fragments, parse_conllu)
 from prussian.dipmt.lexicon import Candidate, _rank
 
 
@@ -49,6 +52,42 @@ class TestRank(unittest.TestCase):
         ranked = _rank(cands, total=5)
         self.assertEqual([c.lemma for c in ranked], ["būda", "telepōns"])
         self.assertEqual(ranked[0].form, "būdan")   # corpus details kept
+
+
+_PADU = """\
+1\ten\tēn\tADP\tPr\t_\t3\tcase\t_\t_
+2\tšismu\tšis\tPRON\tPron+Msc+Sg+Dat\tCase=Dat\t3\tdet\t_\t_
+3\tpādu\tpāds\tNOUN\tN+Msc+Sg+Dat\tCase=Dat\t5\tobl\t_\t_
+4\tni\tni\tPART\tPcle\t_\t5\tadvmod\t_\t_
+5\tast\tbūtwei\tVERB\tV+Ind+Prs+SP3\tMood=Ind|Tense=Pres\t0\troot\t_\t_
+6\t.\t.\tPUNCT\t_\t_\t5\tpunct\t_\t_
+"""
+
+
+class TestConstructions(unittest.TestCase):
+    def test_fragments_keep_function_words_lexical(self):
+        frags = {f for f, _ in fragments(parse_conllu(_PADU))}
+        self.assertIn("ēn PRON.Dat NOUN.Dat", frags)
+        self.assertIn("ni būtwei.Pres", frags)
+        self.assertIn("NOUN.Dat <det< PRON.Dat", frags)
+        # windows must open with a function word: no "NOUN.Dat ni"
+        self.assertNotIn("NOUN.Dat ni", frags)
+
+    def test_variants_change_one_slot(self):
+        vs = _variants("ēn NOUN.Dat", {"NOUN": {"Dat", "Acc", "?"}})
+        self.assertEqual(vs, ["ēn NOUN.Acc"])
+
+    def test_analyse_flags_rare_value_in_attested_context(self):
+        idx = Constructions.__new__(Constructions)
+        idx.count = Counter({"ēn PRON.Dat NOUN.Dat": 30, "ēn NOUN.Dat": 40})
+        idx.values = {"NOUN": {"Dat", "Nom"}, "PRON": {"Dat", "Nom"}}
+        toks = parse_conllu(_PADU.replace("NOUN\tN+Msc+Sg+Dat\tCase=Dat",
+                                          "NOUN\tN+Msc+Sg+Nom\tCase=Nom"))
+        found = {f["fragment"]: f for f in idx.analyse(toks)}
+        self.assertIn("ēn PRON.Dat NOUN.Nom", found)
+        self.assertEqual(found["ēn PRON.Dat NOUN.Nom"]["alternatives"][0],
+                         ("ēn PRON.Dat NOUN.Dat", 30))
+        self.assertFalse(idx.analyse(parse_conllu(_PADU)))
 
 
 if __name__ == "__main__":

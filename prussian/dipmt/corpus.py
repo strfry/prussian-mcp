@@ -3,8 +3,8 @@
 Source is ``sentences_scored.jsonl`` from the eval (YouTube subtitles with
 an FST/CG3 token analysis per sentence).  Subtitles repeat, so pairs are
 deduplicated on the normalized Prussian text.  The held-out split always
-contains the eval set's sentences (matched on text, not id) so neither the
-induced lexicon nor the exemplar pool can leak eval targets.
+contains every video that has an eval sentence (matched on text, not id) so
+neither the induced lexicon nor the exemplar pool sees the eval lessons.
 """
 
 from __future__ import annotations
@@ -107,15 +107,22 @@ def eval_texts(path: Path = EVAL_SET) -> set[str]:
     return out
 
 
+def video(sent_id: str) -> str:
+    """Source video of a subtitle line (``yt-<video>-<line>``)."""
+    return sent_id.rsplit("-", 1)[0]
+
+
 def split(pairs: list[Pair], heldout_frac: float = 0.1, seed: int = 13
           ) -> tuple[list[Pair], list[Pair]]:
-    """(train, heldout).  Heldout = the eval set + a seeded random sample."""
+    """(train, heldout) by *video*: every video with an eval sentence plus a
+    seeded random share of the others is held out whole.  A per-sentence
+    split leaks neighbouring lines of the same lesson into training."""
     evals = eval_texts()
     rng = random.Random(seed)
-    train, held = [], []
-    for p in pairs:
-        if norm_text(p.pru) in evals or rng.random() < heldout_frac:
-            held.append(p)
-        else:
-            train.append(p)
+    held_videos = {video(p.sent_id) for p in pairs if norm_text(p.pru) in evals}
+    for v in sorted({video(p.sent_id) for p in pairs} - held_videos):
+        if rng.random() < heldout_frac:
+            held_videos.add(v)
+    train = [p for p in pairs if video(p.sent_id) not in held_videos]
+    held = [p for p in pairs if video(p.sent_id) in held_videos]
     return train, held
