@@ -52,7 +52,7 @@ argparse first).
 source env.hf-voyage.sh        # OPENAI_API_KEY + HF router + Voyage reranker
 uv run prussian-agent "Ich sehe eine weiße Birke" --json
 uv run prussian-agent --validate-only "As wīda gaīlan berzin"   # FST/CG3 only
-uv run prussian-agent "…" --mcp-url https://strfry.org/prussian-mcp/mcp
+uv run prussian-agent "…" --mcp-url https://prussian.uber.space/mcp
 ```
 
 Exit codes from `validation.overall.status`: 0 verified_in_coverage ·

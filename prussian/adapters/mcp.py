@@ -3,7 +3,9 @@
 A thin wrapper: every tool delegates to :mod:`prussian.tools`, the exact
 same functions the inspect eval (:mod:`prussian.adapters.inspect`) and
 the CLI agent (:mod:`prussian.adapters.agent`) use.  No LLM proxy, no
-prompts, no resources — just the tools plus a startup FST health check.
+resources — just the tools, one ``system`` prompt (the eval's contract and
+base vocabulary, for chat clients like prussian-bot) and a startup FST
+health check.
 
 Run it::
 
@@ -22,13 +24,14 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from mcp.server.transport_security import TransportSecuritySettings
 
+from prussian.config import PROMPTS_DIR
 from prussian.engine.fst.validate import check_fsg_pipeline
 from prussian.tools import lookup_tool, search_tool, spec, validate_tool, wordforms_tool
 from prussian.tools.runtime import get_engine, get_reranker
 
 # ── Server ────────────────────────────────────────────────────────────────────
 
-# Allow strfry.org for remote access via SSH tunnel.  Extra browser origins
+# Extra browser origins
 # (e.g. a local web UI on a LAN IP) can be added via MCP_CORS_ORIGINS
 # (comma-separated, ``:*`` = any port); ``*`` disables the origin check.
 _extra_origins = [o.strip() for o in os.getenv("MCP_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -37,8 +40,6 @@ _allowed_origins = [
     "http://127.0.0.1:*",
     "http://localhost",
     "http://localhost:*",
-    "https://strfry.org",
-    "https://strfry.org:*",
     "https://prussian.uber.space",
     "https://prussian.uber.space:*",
     *_extra_origins,
@@ -49,8 +50,6 @@ _security = TransportSecuritySettings(
     allowed_hosts=[
         "127.0.0.1:*",
         "localhost:*",
-        "strfry.org:*",
-        "strfry.org",
         "prussian.uber.space:*",
         "prussian.uber.space",
         # Host header values when served on a LAN IP, e.g. "192.168.1.50:*".
@@ -117,6 +116,20 @@ for _fn, _spec in (
 ):
     _fn.__doc__ = spec.docstring(_spec)
     mcp.tool(structured_output=False)(_fn)
+
+
+# ── Prompt ────────────────────────────────────────────────────────────────────
+
+
+@mcp.prompt(name="system")
+def system_prompt() -> str:
+    """System prompt for chat clients: the same tool contract and base
+    vocabulary the reconstruction eval puts in front of every sentence."""
+    read = lambda name: (PROMPTS_DIR / name).read_text(encoding="utf-8").strip()
+    return (
+        read("chat_intro.md") + "\n" + read("contract.md")
+        + "\n\n" + read("base_vocab.md")
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

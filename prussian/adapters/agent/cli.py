@@ -5,7 +5,7 @@ Examples::
     prussian-agent "Ich sehe eine weiße Birke"
     prussian-agent "…" --json
     prussian-agent --validate-only "As wīda gaīlan berzin"
-    prussian-agent "…" --mcp-url https://strfry.org/prussian-mcp/mcp
+    prussian-agent "…" --mcp-url https://prussian.uber.space/mcp
     prussian-agent "…" --system-prompt prompts/agent_system_en.md \\
         --extra-prompt A --extra-prompt B
 

@@ -1,0 +1,1 @@
+Do NOT call search_dictionary for any word listed in the BASE VOCABULARY — those forms are already exact. Find each remaining word with search_dictionary, fetch the exact inflected form with get_word_forms, and check your draft with validate_prussian.
