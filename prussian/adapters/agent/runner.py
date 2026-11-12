@@ -109,7 +109,7 @@ def run_agent(
     agent: ToolCallingAgent,
     system_prompt: str,
 ) -> RunResult:
-    task = f"Translate to Prussian: {sentence}"
+    task = f"Translate: {sentence}"  # same prefix as the eval
     t0 = time.perf_counter()
 
     final_answer = agent.run(task, stream=False)

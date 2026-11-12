@@ -6,8 +6,11 @@ Examples::
     prussian-agent "…" --json
     prussian-agent --validate-only "As wīda gaīlan berzin"
     prussian-agent "…" --mcp-url https://prussian.uber.space/mcp
-    prussian-agent "…" --system-prompt prompts/agent_system_en.md \\
+    prussian-agent "…" --system-prompt my_prompt.md \\
         --extra-prompt A --extra-prompt B
+
+The default instructions are :func:`prussian.prompts.system_prompt` — the
+same text the MCP server serves to prussian-bot.
 
 Exit codes (derived from ``validation.overall.status`` when present):
 
@@ -27,10 +30,7 @@ import sys
 import traceback
 from pathlib import Path
 
-# Resolve the default prompt from the source tree (works for editable
-# installs and direct from-source runs; for wheel installs pass
-# --system-prompt explicitly).
-DEFAULT_PROMPT = Path(__file__).resolve().parent.parent / "prompts" / "agent_system_en.md"
+from prussian.prompts import system_prompt as default_system_prompt
 
 # Maps validation overall.status -> exit code.
 STATUS_TO_EXIT = {
@@ -57,13 +57,12 @@ def _build_env_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="prussian-agent",
         description=(
-            "Translate a German sentence into Old Prussian via an LLM "
-            "agent with dictionary/FST/CG3 tools.  The model self-corrects "
-            "by calling validate_prussian on its draft before the final "
-            "PRUSSIAN: line."
+            "Translate a sentence into reconstructed Prussian via an LLM "
+            "agent with dictionary/FST/CG3 tools, using the same system "
+            "prompt as the MCP server (prussian-bot) and the eval."
         ),
     )
-    ap.add_argument("sentence", help="German sentence to translate.")
+    ap.add_argument("sentence", help="sentence to translate.")
     ap.add_argument("--model", default=os.environ.get("OPENAI_MODEL", ""),
                     help="LLM model name (default: $OPENAI_MODEL).")
     ap.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", ""),
@@ -79,9 +78,10 @@ def _build_env_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--mcp-url", default=None,
                     help="use a remote MCP server instead of the in-process "
                          "tools.")
-    ap.add_argument("--system-prompt", type=Path, default=DEFAULT_PROMPT,
-                    help="path to the system-prompt markdown file (default: "
-                         "prompts/agent_system_en.md).")
+    ap.add_argument("--system-prompt", type=Path, default=None,
+                    help="path to a system-prompt file replacing the default "
+                         "(prussian.prompts.system_prompt, the MCP server's "
+                         "system prompt).")
     ap.add_argument("--extra-prompt", type=Path, action="append",
                     default=[], help="additional prompt file appended to the "
                     "system prompt (repeatable).")
@@ -170,7 +170,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build system prompt.
     try:
-        system_prompt = load_system_prompt(args.system_prompt)
+        system_prompt = (load_system_prompt(args.system_prompt)
+                         if args.system_prompt else default_system_prompt())
     except (OSError, RuntimeError) as e:
         ap.error(f"could not load system prompt: {e}")
     for ep in args.extra_prompt:

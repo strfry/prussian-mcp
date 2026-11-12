@@ -24,8 +24,8 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from mcp.server.transport_security import TransportSecuritySettings
 
-from prussian.config import PROMPTS_DIR
 from prussian.engine.fst.validate import check_fsg_pipeline
+from prussian.prompts import system_prompt as _system_prompt
 from prussian.tools import lookup_tool, search_tool, spec, validate_tool, wordforms_tool
 from prussian.tools.runtime import get_engine, get_reranker
 
@@ -125,11 +125,7 @@ for _fn, _spec in (
 def system_prompt() -> str:
     """System prompt for chat clients: the same tool contract and base
     vocabulary the reconstruction eval puts in front of every sentence."""
-    read = lambda name: (PROMPTS_DIR / name).read_text(encoding="utf-8").strip()
-    return (
-        read("chat_intro.md") + "\n" + read("contract.md")
-        + "\n\n" + read("base_vocab.md")
-    )
+    return _system_prompt()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

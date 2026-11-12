@@ -37,7 +37,7 @@ Single top-level package `prussian/`:
 | `prussian/adapters/inspect_tools.py` | inspect-ai `@tool` wrappers for the reconstruction eval. |
 | `prussian/config.py` | Env-driven config, read at import time. |
 | `evals/` | inspect-ai eval harness (`reconstruction.py`, `corpus_dataset.py`); imports `prussian.adapters.inspect_tools`. Needs the `eval` extra (`inspect-ai`). |
-| `prompts/` | `agent_system_en.md` is the canonical agent prompt; `syntax_rules.txt`, `base_vocab.md`. |
+| `prompts/` | `chat_intro.md` + `contract.md` + `base_vocab.md` = the one system prompt (`prussian/prompts.py`), served by the MCP server and used by `prussian-agent`; the eval reads `contract.md`/`base_vocab.md` too. `syntax_rules.txt` is eval-only (`instruct=syntax`/`vocab`). |
 | `tests/test_agent_loop.py` | Offline tests: `extract_candidate`, `parse_last_validation`, `run_agent` with a mock agent. |
 
 ## Running the agent

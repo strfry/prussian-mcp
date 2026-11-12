@@ -15,7 +15,6 @@ PROMPTS_DIR = PROJECT_ROOT / "prompts"
 CORPUS_PARSED = PROJECT_ROOT.parent / "corpus" / "parsed"
 DICTIONARY_PATH = Path(os.getenv(
     "PRUSSIAN_DICTIONARY", str(CORPUS_PARSED / "twanksta_dmlex.nvh")))
-AGENT_PROMPT_PATH = PROMPTS_DIR / "agent_system_en.md"
 
 # ── Embedding storage and search ──────────────────────────────────────────────
 # Backend/Modell/API-Keys liest ausschließlich prussian_embeddings.env_config()

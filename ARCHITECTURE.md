@@ -47,7 +47,7 @@ prussian-mcp/
 │       ├── inspect_tools.py      # inspect-ai @tool-Wrapper
 │       └── agent/                # prussian-agent CLI (cli.py, runner.py, tools.py)
 ├── evals/                        # inspect-ai Eval-Harness (reconstruction.py, corpus_dataset.py)
-├── prompts/                      # agent_system_en.md, syntax_rules.txt, base_vocab.md
+├── prompts/                      # chat_intro.md, contract.md, base_vocab.md (system prompt), syntax_rules.txt
 ├── tests/
 ├── pyproject.toml                # uv-Projekt; prussian-fst als editierbare Path-Dependency
 └── ARCHITECTURE.md
